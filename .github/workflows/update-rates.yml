@@ -1,15 +1,23 @@
-name: Update USD/ILS rates
+name: Update USD/ILS rates (weekly)
 
-# Refreshes data/usd_ils_rates.{json,js} from the Bank of Israel API.
-# The browser cannot call the BOI API directly (it rejects cross-origin
-# requests), so the app relies on this bundled copy.
+# Refreshes every exchange-rate file under data/:
+#   - Bank of Israel representative rate (used on the form)
+#   - ECB reference rate and Yahoo Finance daily close (cross-check)
+#   - Yahoo Finance 1-minute and 60-minute bars (rate at the exact sale time)
+# Yahoo keeps 1-minute bars for only 30 days, so this weekly run is what builds
+# the permanent minute archive (data/intraday/minute/YYYY-MM.json).
+# The browser cannot call these APIs directly (CORS), so the app uses these files.
 on:
   schedule:
-    - cron: '23 16 * * 1-5' # after the daily representative rate is published
+    - cron: '41 19 * * 6' # Saturday 19:41 UTC - after the trading week, Saturday night in Israel
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: update-rates
+  cancel-in-progress: false
 
 jobs:
   update:
@@ -19,16 +27,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Download rates
+      - name: Download rates from all sources
         run: python3 scripts/update_rates.py
       - name: Commit if changed
         run: |
-          if git diff --quiet -- data/; then
+          if [ -z "$(git status --porcelain -- data/)" ]; then
             echo "No new rates"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/
-          git commit -m "Update USD/ILS representative rates"
+          git commit -m "Update USD/ILS rates (weekly)"
           git push

@@ -111,3 +111,32 @@ test('summary offsets losses against gains per half-year and year', () => {
   assert.equal(y.net, 800);
   assert.equal(y.tax, 200);
 });
+
+test('cross-check flags large deviations from the BOI rate', () => {
+  const src = { boi: { '2024-01-31': 3.635 }, ecb: { '2024-01-31': 3.6386 }, yahoo: { '2024-01-31': 3.72 } };
+  const c = Core.crossCheck(src, '2024-01-31');
+  assert.equal(c.checks.ecb.devPct, 0.1);
+  assert.equal(c.checks.ecb.warn, false);
+  assert.equal(c.checks.yahoo.warn, true);
+  assert.equal(c.warn, true);
+});
+
+test('New York time to UTC honours daylight saving', () => {
+  // 11 May 2026 is EDT (UTC-4); 15 Jan 2026 is EST (UTC-5).
+  assert.equal(Core.nyToUtcEpoch('2026-05-11', '10:30'), Date.UTC(2026, 4, 11, 14, 30) / 1000);
+  assert.equal(Core.nyToUtcEpoch('2026-01-15', '10:30'), Date.UTC(2026, 0, 15, 15, 30) / 1000);
+  assert.equal(Core.nyToUtcEpoch('2026-01-15', ''), null);
+});
+
+test('intraday lookup picks the bar whose close is nearest to the moment', () => {
+  const t0 = Date.UTC(2026, 9, 1) / 1000;
+  const file = { interval: 60, t0, t: [0, 1, 2, 10], c: [3.1, 3.2, 3.3, 3.4] };
+  assert.equal(Core.intradayAt(file, t0 + 90).rate, 3.2);       // bar 1 closes at t0+120
+  assert.equal(Core.intradayAt(file, t0 + 100).ts, t0 + 120);
+  assert.equal(Core.intradayAt(file, t0 + 80).ts, t0 + 60);       // bar 0 closes nearer
+  assert.equal(Core.intradayAt(file, t0 + 60 * 4).rate, 3.3);   // gap of 2 bars -> last earlier bar
+  assert.equal(Core.intradayAt(file, t0 + 60 * 6 + 5).exact, false);
+  assert.equal(Core.intradayAt(file, t0 + 60 * 9 + 5), null);      // gap of 7 bars is too far
+  assert.equal(Core.intradayAt(file, t0 + 60 * 20), null);     // beyond the data
+  assert.equal(Core.intradayAt(file, t0 - 60), null);
+});

@@ -218,6 +218,69 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- rate cross-check
+
+  // Typical |deviation| from the BOI rate (2020-2026): ECB median 0.08%, max 0.99%;
+  // Yahoo daily close median 0.22%, p99 1.4%. Above these the row is flagged.
+  const CHECK_THRESHOLDS = { ecb: 1.0, yahoo: 1.5 };
+
+  /**
+   * Compare the BOI rate for a date with the secondary daily sources.
+   * @param {object} sources {boi, ecb, yahoo} maps of ISO date -> rate
+   */
+  function crossCheck(sources, iso) {
+    const boi = lookupRate(sources.boi, iso);
+    const out = { date: iso, boi, warn: false, checks: {} };
+    for (const key of ['ecb', 'yahoo']) {
+      const r = sources[key] ? lookupRate(sources[key], iso) : null;
+      const devPct = boi && r ? round2((r.rate / boi.rate - 1) * 100) : null;
+      const warn = devPct !== null && Math.abs(devPct) > CHECK_THRESHOLDS[key];
+      out.checks[key] = { ...(r || {}), devPct, warn };
+      if (warn) out.warn = true;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- intraday
+
+  /**
+   * Convert a wall-clock time in New York (E*Trade shows execution times in ET)
+   * to a UTC epoch in seconds, honouring daylight saving time.
+   */
+  function nyToUtcEpoch(iso, hhmm, timeZone = 'America/New_York') {
+    if (!iso || !/^\d{1,2}:\d{2}/.test(hhmm || '')) return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    const [h, mi] = hhmm.split(':').map(Number);
+    const wanted = Date.UTC(y, m - 1, d, h, mi);
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    let guess = wanted + 5 * 3600000; // EST offset as a first guess
+    for (let i = 0; i < 3; i++) {
+      const p = Object.fromEntries(fmt.formatToParts(new Date(guess)).map(x => [x.type, x.value]));
+      const local = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute);
+      if (local === wanted) break;
+      guess += wanted - local;
+    }
+    return Math.floor(guess / 1000);
+  }
+
+  /**
+   * Find the market rate at a UTC epoch in an intraday file written by
+   * scripts/update_rates.py ({interval, t0, t[], c[]}). Bars are stamped with their
+   * START time but hold the CLOSE price, so the bar whose close is nearest to the
+   * moment is used; if it is missing, the nearest earlier bar within maxGapBars.
+   * Returned `ts` is the close time of the bar used.
+   */
+  function intradayAt(file, epoch, maxGapBars = 5) {
+    if (!file || !file.t || !file.t.length || !isFinite(epoch)) return null;
+    const step = file.interval;
+    const target = Math.round((epoch - file.t0) / step) - 1;
+    let lo = 0, hi = file.t.length - 1;
+    if (target < file.t[0]) return null;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (file.t[mid] <= target) lo = mid; else hi = mid - 1; }
+    if (target - file.t[lo] > maxGapBars) return null;
+    return { rate: file.c[lo], ts: file.t0 + (file.t[lo] + 1) * step, interval: step, exact: file.t[lo] === target };
+  }
+
   // ---------------------------------------------------------------- E*Trade import
 
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -295,6 +358,7 @@
         costUsd: cost,
         feesUsd: 0,
         order: get('order') !== undefined ? String(get('order')).trim() : '',
+        timeSold: '',
       });
     }
     if (!lots.length) warnings.push('לא נמצאו שורות מכירה בקובץ');
@@ -313,5 +377,6 @@
   return {
     TAX_RATE, parseDate, formatDateIL, addDays, halfOfYear, parseMoney, round2, roundILS,
     lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
+    CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
   };
 });

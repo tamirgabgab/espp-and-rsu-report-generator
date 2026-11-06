@@ -3,6 +3,8 @@
   'use strict';
   const Core = window.Core;
   const RATES = (window.USD_ILS_RATES && window.USD_ILS_RATES.rates) || {};
+  const SECONDARY = window.USD_ILS_SECONDARY || {};
+  const SOURCES = { boi: RATES, ecb: SECONDARY.ecb && SECONDARY.ecb.rates, yahoo: SECONDARY.yahoo && SECONDARY.yahoo.rates };
   const LS_PROFILE = 'f1399.profile';
   const LS_LOTS = 'f1399.lots';
   const $ = sel => document.querySelector(sel);
@@ -22,7 +24,7 @@
   const profile = Object.assign({ name: '', idNumber: '', belonging: '2', place: 'israel', sec102: true, signDate: '' }, store.get(LS_PROFILE, {}));
   let lots = store.get(LS_LOTS, []).map(l => ({ ...l, id: nextId++ }));
 
-  const blankLot = () => ({ id: nextId++, symbol: '', planType: 'ESPP', qty: NaN, dateAcquired: '', dateSold: '', proceedsUsd: NaN, costUsd: NaN, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '' });
+  const blankLot = () => ({ id: nextId++, symbol: '', planType: 'ESPP', qty: NaN, dateAcquired: '', dateSold: '', timeSold: '', proceedsUsd: NaN, costUsd: NaN, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '' });
 
   const EXAMPLE = [
     { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 },
@@ -72,6 +74,7 @@
       <td><input class="qty" type="number" step="any" data-k="qty" value="${num(lot.qty)}" aria-label="כמות"></td>
       <td><input type="date" data-k="dateAcquired" value="${esc(lot.dateAcquired)}" aria-label="תאריך רכישה"></td>
       <td><input type="date" data-k="dateSold" value="${esc(lot.dateSold)}" aria-label="תאריך מכירה"></td>
+      <td><input type="time" data-k="timeSold" value="${esc(lot.timeSold || '')}" aria-label="שעת מכירה בשעון ניו יורק" title="שעת הביצוע מ-Order Details ב-E*Trade (שעון ניו יורק)"></td>
       <td><input type="number" step="0.01" data-k="proceedsUsd" value="${num(lot.proceedsUsd)}" aria-label="תמורה בדולרים"></td>
       <td><input type="number" step="0.01" data-k="costUsd" value="${num(lot.costUsd)}" aria-label="עלות בדולרים"></td>
       <td><input type="number" step="0.01" data-k="feesUsd" value="${num(lot.feesUsd)}" aria-label="עמלות בדולרים"></td>
@@ -98,7 +101,7 @@
       const issueTr = document.createElement('tr');
       issueTr.className = 'issue-row';
       issueTr.dataset.issueFor = lot.id;
-      issueTr.innerHTML = '<td class="issue" colspan="18"></td>';
+      issueTr.innerHTML = '<td class="issue" colspan="19"></td>';
       body.appendChild(issueTr);
     }
     $('#empty-state').hidden = lots.length > 0;
@@ -127,6 +130,7 @@
       issueTr.firstElementChild.textContent = calc.ok ? '' : `⚠ ${calc.issues.join(' · ')}`;
     }
     renderSummary(items);
+    renderChecks(items);
     renderChart();
     persist();
   }
@@ -143,6 +147,92 @@
     else if (k === 'symbol') lot[k] = input.value.trim().toUpperCase();
     else lot[k] = input.value;
     refresh();
+  }
+
+  // ------------------------------------------------------------ rate control
+
+  const intradayCache = new Map(); // url -> Promise<file|null>
+  let intradayIndex = null;
+
+  function loadJson(url) {
+    if (!intradayCache.has(url)) {
+      intradayCache.set(url, fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null));
+    }
+    return intradayCache.get(url);
+  }
+
+  /** Market rate at the sale moment: minute archive first, then hourly bars. */
+  async function intradayRate(lot) {
+    const epoch = Core.nyToUtcEpoch(lot.dateSold, lot.timeSold);
+    if (epoch === null) return null;
+    if (!intradayIndex) intradayIndex = (await loadJson('data/intraday/index.json')) || { minute: [], hourly: [] };
+    const d = new Date(epoch * 1000);
+    const month = d.toISOString().slice(0, 7), year = month.slice(0, 4);
+    if (intradayIndex.minute.includes(month)) {
+      const r = Core.intradayAt(await loadJson(`data/intraday/minute/${month}.json`), epoch, 5);
+      if (r) return { ...r, epoch, kind: 'דקה' };
+    }
+    if (intradayIndex.hourly.includes(year)) {
+      const r = Core.intradayAt(await loadJson(`data/intraday/hourly/${year}.json`), epoch, 1);
+      if (r) return { ...r, epoch, kind: 'שעה' };
+    }
+    return { epoch, missing: true };
+  }
+
+  const pct = v => (v === null || v === undefined ? '' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
+  const rateCell = (c, label) => {
+    if (!c || !c.rate) return '<td>—</td>';
+    const late = c.date && c.date !== label ? `<span class="dev">מ‑${Core.formatDateIL(c.date)}</span>` : '';
+    return `<td class="num ${c.warn ? 'warn-cell' : ''}">${c.rate}<span class="dev">${pct(c.devPct)}</span>${late}</td>`;
+  };
+
+  let checksSeq = 0;
+  async function renderChecks(items) {
+    const seq = ++checksSeq;
+    const body = $('#check-body');
+    const rows = [];
+    let flagged = 0;
+    for (const [i, { lot, calc }] of items.entries()) {
+      const events = [['רכישה', lot.dateAcquired], ['מכירה', lot.dateSold]];
+      for (const [label, date] of events) {
+        if (!date) continue;
+        const cc = Core.crossCheck(SOURCES, date);
+        if (cc.warn) flagged++;
+        let intraCells = '<td></td><td></td><td></td><td></td>';
+        if (label === 'מכירה') {
+          const ir = lot.timeSold ? await intradayRate(lot) : null;
+          if (seq !== checksSeq) return; // a newer render started
+          if (!lot.timeSold) {
+            intraCells = '<td class="hint">לא הוזנה שעה</td><td></td><td></td><td></td>';
+          } else if (!ir || ir.missing) {
+            intraCells = `<td>${esc(lot.timeSold)}</td><td colspan="3" class="hint">אין נתוני שעה/דקה לזמן הזה (ארכיון הדקות מתחיל ב‑${esc((intradayIndex && intradayIndex.minute[0]) || '?')}, נתוני שעה כשנתיים אחורה)</td>`;
+          } else {
+            const boi = cc.boi && cc.boi.rate;
+            const diff = boi ? ((ir.rate / boi - 1) * 100) : null;
+            const effect = boi && isFinite(lot.proceedsUsd) ? Core.roundILS(lot.proceedsUsd * (ir.rate - boi)) : null;
+            const utc = new Date(ir.ts * 1000).toISOString().slice(11, 16);
+            intraCells = `<td>${esc(lot.timeSold)}</td>
+              <td class="num">${ir.rate.toFixed(4)}<span class="dev">דיוק: ${ir.kind}${ir.exact ? '' : ' (הקרוב)'} · נכון ל‑<bdi dir="ltr">${utc} UTC</bdi></span></td>
+              <td class="num">${pct(diff)}</td><td class="num">${effect === null ? '' : fmt(effect)}</td>`;
+          }
+        }
+        rows.push(`<tr class="${label === 'רכישה' ? 'sep' : ''}">
+          <td>${label === 'רכישה' ? i + 1 : ''}</td><td>${label === 'רכישה' ? esc(lot.symbol) : ''}</td><td>${label}</td>
+          <td>${Core.formatDateIL(date)}</td>
+          <td class="num">${cc.boi ? cc.boi.rate : '—'}${cc.boi && cc.boi.date !== date ? `<span class="dev">מ‑${Core.formatDateIL(cc.boi.date)}</span>` : ''}</td>
+          ${rateCell(cc.checks.ecb, cc.boi && cc.boi.date)}${rateCell(cc.checks.yahoo, cc.boi && cc.boi.date)}
+          ${intraCells}</tr>`);
+      }
+    }
+    if (seq !== checksSeq) return;
+    body.innerHTML = rows.join('') || '<tr><td colspan="11" class="hint">אין עסקאות לבדיקה.</td></tr>';
+    const ecbMeta = SECONDARY.ecb, yMeta = SECONDARY.yahoo;
+    $('#check-meta').textContent = [
+      flagged ? `⚠ ${flagged} תאריכים עם סטייה חריגה (ECB מעל ${Core.CHECK_THRESHOLDS.ecb}%, Yahoo מעל ${Core.CHECK_THRESHOLDS.yahoo}%). כדאי לבדוק את השער מול אתר בנק ישראל.` : 'כל השערים תואמים בין המקורות.',
+      ecbMeta ? `ECB: עד ${Core.formatDateIL(ecbMeta.last)}.` : 'נתוני ECB לא נטענו.',
+      yMeta ? `Yahoo: עד ${Core.formatDateIL(yMeta.last)}.` : 'נתוני Yahoo לא נטענו.',
+      'הסטייה מחושבת ביחס לשער היציג.',
+    ].join(' ');
   }
 
   // ------------------------------------------------------------ summary
@@ -286,6 +376,19 @@
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'עסקאות');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sums), 'סיכום');
+    const checks = [];
+    for (const { lot } of ok) {
+      for (const [label, date] of [['רכישה', lot.dateAcquired], ['מכירה', lot.dateSold]]) {
+        const cc = Core.crossCheck(SOURCES, date);
+        checks.push({
+          'נייר': lot.symbol, 'אירוע': label, 'תאריך': Core.formatDateIL(date),
+          'בנק ישראל': cc.boi ? cc.boi.rate : '', 'ECB': cc.checks.ecb.rate ?? '', 'סטייה ECB %': cc.checks.ecb.devPct ?? '',
+          'Yahoo': cc.checks.yahoo.rate ?? '', 'סטייה Yahoo %': cc.checks.yahoo.devPct ?? '',
+          'שעת מכירה (ניו יורק)': label === 'מכירה' ? (lot.timeSold || '') : '',
+        });
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(checks), 'בקרת שערים');
     wb.Workbook = { Views: [{ RTL: true }] };
     XLSX.writeFile(wb, `capital-gains-${ok[0].lot.dateSold.slice(0, 4)}.xlsx`);
     setMsg(msg, 'קובץ ה‑Excel ירד.', 'ok');

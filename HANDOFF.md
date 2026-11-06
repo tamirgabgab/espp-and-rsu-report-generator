@@ -52,14 +52,71 @@ each work session.
   - Tests on every push.
 - Docs: `README.md`, `CLAUDE.md` (answer in Hebrew), and this file.
 
+## Done (session 1, continued)
+
+### Live site
+- GitHub Pages is enabled from `main` / root.
+- The site is live at https://tamirgabgab.github.io/espp-and-rsu-report-generator/.
+
+### Rate sources
+- `scripts/update_rates.py` now downloads four sources:
+
+  | Source | What | File | Role |
+  |---|---|---|---|
+  | BOI | representative rate | `data/usd_ils_rates.*` | the form |
+  | ECB | via Frankfurter | `data/usd_ils_ecb.json` | cross-check |
+  | Yahoo | `ILS=X` daily close | `data/usd_ils_yahoo.json` | cross-check |
+  | Yahoo | 1m and 60m bars | `data/intraday/` | rate at sale time, information only |
+
+- ECB and Yahoo daily are bundled for the browser in `data/usd_ils_secondary.js`.
+- If one source fails, the others still run. The run fails only if BOI fails.
+- Yahoo limits:
+  - 1-minute bars: last 30 days, at most 7 days per request;
+  - hourly bars: about 730 days;
+  - daily bars: full history.
+- The weekly run keeps a permanent minute archive. It merges into the monthly
+  files, so overlapping runs are harmless.
+- Measured deviation from BOI, 2020–2026:
+
+  | Source | Median | p99 | Max |
+  |---|---|---|---|
+  | ECB | 0.08% | 0.69% | 0.99% |
+  | Yahoo | 0.22% | 1.37% | 3.37% |
+
+  The warning thresholds are 1% for ECB and 1.5% for Yahoo (`CHECK_THRESHOLDS`
+  in `js/core.js`).
+- The workflow became weekly: Saturday 19:41 UTC, plus manual dispatch.
+
+### Sale time and rate control
+- New optional column for the sale time, in New York time.
+- `Core.nyToUtcEpoch` converts it to UTC with DST handled.
+- `Core.intradayAt` picks the bar whose close time is nearest to the sale
+  moment. Yahoo stamps bars with their start time but stores the close price.
+- New UI section "בקרת שערים":
+  - shows BOI, ECB and Yahoo for every purchase and sale date;
+  - shows the intraday rate at the sale time, its difference from the
+    representative rate, and the effect on proceeds in ₪.
+- The same data is in an Excel sheet. The intraday rate is information only:
+  the form always uses the BOI rate.
+
+### Decisions taken with the user
+- The intraday rate is for control only.
+- Cross-check against both ECB and Yahoo.
+- Intraday data comes from Yahoo, kept in a weekly archive.
+- All sources update weekly.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
    `COLUMN_ALIASES` in `js/core.js` if headers differ. Things to check:
    - the "Adjusted Cost Basis" column for RSU rows;
    - whether "Total Proceeds" is net of fees.
-2. **Enable GitHub Pages** (Settings → Pages → main / root) after merging. Then
-   check the live link in README.
+2. **Minute archive coverage.** The minute archive starts in October 2026; earlier
+   sales have hourly data back to about November 2024, and nothing intraday
+   before that. Getting minute data further back needs a paid API key
+   (Twelve Data / Polygon) stored as a GitHub secret.
+   - If Yahoo blocks GitHub runners (HTTP 429), the weekly run logs it and
+     continues; the next run catches up as long as it is within 30 days.
 3. **Form edition per tax year.** Only the 2025 form (`1399y-2025`) is bundled.
    When the 2026 form is published:
    - add it under `assets/`;

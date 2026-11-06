@@ -80,7 +80,7 @@
         <table id="tx-table">
           <thead>
             <tr>
-              <th>נייר</th><th>תוכנית</th><th>כמות</th><th>ת. רכישה</th><th>ת. מכירה</th>
+              <th>נייר</th><th>תוכנית</th><th>כמות</th><th>ת. רכישה</th><th>ת. מכירה</th><th>שעת מכירה<br><small>ניו יורק, לא חובה</small></th>
               <th>תמורה $</th><th>עלות $<br><small>Adjusted</small></th><th>עמלות $</th><th>102</th>
               <th>שער רכישה</th><th>שער מכירה</th>
               <th>תמורה ₪</th><th>עלות ₪</th><th>רווח נומינלי ₪</th><th>אינפלציוני ₪</th><th>רווח ריאלי ₪</th><th>מס 25% ₪</th><th></th>
@@ -90,6 +90,24 @@
         </table>
       </div>
       <p id="empty-state" class="empty">אין עסקאות עדיין. כדי להתחיל, מעלים קובץ מ‑E*Trade, מוסיפים שורה ידנית או טוענים את הדוגמה.</p>
+    </section>
+
+    <!-- 3b. Rate control -->
+    <section class="card" aria-labelledby="check-title">
+      <h2 id="check-title"><span class="step">✓</span> בקרת שערים</h2>
+      <p class="hint">הטופס מחושב תמיד לפי השער היציג של בנק ישראל. כאן מוצגים לצורך בקרה גם שער הבנק המרכזי האירופי (ECB), שער הסגירה ב‑Yahoo Finance, ושער השוק בשעת המכירה עצמה (אם הוזנה שעה בטבלה). שורה שבה הסטייה מבנק ישראל חריגה מסומנת בצהוב.</p>
+      <div class="table-scroll">
+        <table id="check-table">
+          <thead>
+            <tr>
+              <th>#</th><th>נייר</th><th>אירוע</th><th>תאריך</th><th>בנק ישראל (יציג)</th><th>ECB</th><th>Yahoo סגירה</th>
+              <th>שעה (ניו יורק)</th><th>שער בשעת המכירה</th><th>הפרש מהיציג</th><th>השפעה על התמורה ₪</th>
+            </tr>
+          </thead>
+          <tbody id="check-body"></tbody>
+        </table>
+      </div>
+      <p id="check-meta" class="hint"></p>
     </section>
 
     <!-- 4. Summary -->
@@ -131,6 +149,7 @@
   <script src="vendor/fontkit.umd.min.js"></script>
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="data/usd_ils_rates.js"></script>
+  <script src="data/usd_ils_secondary.js"></script>
   <script src="js/core.js"></script>
   <script src="js/pdf1399.js"></script>
   <script src="js/chart.js"></script>

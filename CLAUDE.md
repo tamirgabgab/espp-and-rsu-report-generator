@@ -13,5 +13,8 @@
 - USD/ILS rates come from the Bank of Israel representative rate (series RER_USD_ILS), bundled in
   `data/usd_ils_rates.json` / `.js` and refreshed by `scripts/update_rates.py`. The BOI API rejects
   cross-origin browser calls, so the app must not depend on fetching it at runtime.
+- Only the BOI rate goes on the form. ECB / Yahoo daily rates are a cross-check, and Yahoo
+  intraday bars (data/intraday/) show the rate at the sale time for information only.
+  All sources are refreshed weekly by .github/workflows/update-rates.yml.
 - Never commit personal data (ID number, real transaction files). Personal details live only in the
   browser's localStorage.
