@@ -1,0 +1,6 @@
+out/
+node_modules/
+*.local.*
+# Never commit real transaction exports
+G&L_*.xlsx
+G&L_*.csv

@@ -8,7 +8,8 @@
 
 ## Project
 - Static web app (no build step) that turns E*Trade ESPP/RSU sale transactions into a filled
-  Israeli Tax Authority form 1399 (י) for the user's accountant. See README.md and HANDOFF.md.
+  Israeli Tax Authority form 1399 (י) for the user's accountant. See README.md, and read HANDOFF.md
+  at the start of every session (update it at the end).
 - USD/ILS rates come from the Bank of Israel representative rate (series RER_USD_ILS), bundled in
   `data/usd_ils_rates.json` / `.js` and refreshed by `scripts/update_rates.py`. The BOI API rejects
   cross-origin browser calls, so the app must not depend on fetching it at runtime.

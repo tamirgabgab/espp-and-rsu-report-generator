@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>מחולל טופס 1399</title>
+  <meta name="description" content="הפקת טופס 1399 (י) ממולא ממכירות ESPP ו-RSU ב-E*Trade, לפי השער היציג של בנק ישראל">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <div class="wrap">
+      <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
+      <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים PDF של טופס 1399 (י) ממולא לכל lot ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- 1. Personal details -->
+    <section class="card" aria-labelledby="profile-title">
+      <h2 id="profile-title"><span class="step">1</span> פרטים אישיים</h2>
+      <p class="hint">נשמרים רק בדפדפן הזה (localStorage) ולא נכנסים לשום קובץ בריפו.</p>
+      <div class="grid">
+        <label>שם המוכר
+          <input id="p-name" type="text" autocomplete="name">
+        </label>
+        <label>מספר תעודת זהות / מספר תיק
+          <input id="p-id" type="text" inputmode="numeric" maxlength="9" autocomplete="off">
+        </label>
+        <label>שייכות
+          <select id="p-belonging">
+            <option value="0">0 - אין שייכות</option>
+            <option value="2">2 - "בן זוג רשום"</option>
+            <option value="3">3 - בן/בת זוג</option>
+          </select>
+        </label>
+        <label>מקום הנכס
+          <select id="p-place">
+            <option value="israel">ישראל</option>
+            <option value="abroad">חו"ל</option>
+          </select>
+        </label>
+        <label>תאריך על הטופס
+          <input id="p-date" type="date">
+        </label>
+        <label class="check">
+          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 (ברירת מחדל לכל העסקאות)
+        </label>
+      </div>
+    </section>
+
+    <!-- 2. Import -->
+    <section class="card" aria-labelledby="import-title">
+      <h2 id="import-title"><span class="step">2</span> ייבוא עסקאות מ‑E*Trade</h2>
+      <details class="howto">
+        <summary>איך מורידים את הקובץ מ‑E*Trade?</summary>
+        <ol>
+          <li>נכנסים ל‑E*Trade, ובתפריט <b>Stock Plan</b> בוחרים <b>My Account</b> ואז <b>Gains &amp; Losses</b>.</li>
+          <li>בוחרים את שנת המס (Tax Year) ולוחצים <b>Download</b> ואז <b>Download Expanded</b>. מתקבל קובץ <code>G&amp;L_Expanded.xlsx</code>.</li>
+          <li>מעלים את הקובץ כאן. כל שורת Sell היא lot נפרד עם תאריך רכישה משלו.</li>
+        </ol>
+      </details>
+      <div class="actions">
+        <label class="btn btn-primary file-btn">
+          העלאת קובץ Excel / CSV
+          <input id="file" type="file" accept=".xlsx,.xls,.csv" hidden>
+        </label>
+        <button id="add-row" class="btn" type="button">הוספת שורה ידנית</button>
+        <button id="load-example" class="btn" type="button">טעינת דוגמה</button>
+        <button id="clear-all" class="btn btn-quiet" type="button">מחיקת כל העסקאות</button>
+      </div>
+      <div id="import-msg" class="msg" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- 3. Transactions -->
+    <section class="card" aria-labelledby="tx-title">
+      <h2 id="tx-title"><span class="step">3</span> עסקאות (lot לכל שורה)</h2>
+      <p class="hint">השערים נלקחים אוטומטית מהשער היציג של בנק ישראל. אם אין שער באותו יום (סוף שבוע או חג), נלקח השער האחרון שפורסם לפניו. כדי לדרוס שער, מקלידים ערך בשדה השער.</p>
+      <div class="table-scroll">
+        <table id="tx-table">
+          <thead>
+            <tr>
+              <th>נייר</th><th>תוכנית</th><th>כמות</th><th>ת. רכישה</th><th>ת. מכירה</th>
+              <th>תמורה $</th><th>עלות $<br><small>Adjusted</small></th><th>עמלות $</th><th>102</th>
+              <th>שער רכישה</th><th>שער מכירה</th>
+              <th>תמורה ₪</th><th>עלות ₪</th><th>רווח נומינלי ₪</th><th>אינפלציוני ₪</th><th>רווח ריאלי ₪</th><th>מס 25% ₪</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="tx-body"></tbody>
+        </table>
+      </div>
+      <p id="empty-state" class="empty">אין עסקאות עדיין. כדי להתחיל, מעלים קובץ מ‑E*Trade, מוסיפים שורה ידנית או טוענים את הדוגמה.</p>
+    </section>
+
+    <!-- 4. Summary -->
+    <section class="card" aria-labelledby="sum-title">
+      <h2 id="sum-title"><span class="step">4</span> סיכום וקיזוז הפסדים</h2>
+      <div id="summary" class="summary"></div>
+      <p class="hint">בדוח חצי‑שנתי משלמים מקדמה עד 31.7 (על ינואר עד יוני) ועד 31.1 בשנה הבאה (על יולי עד דצמבר). הסכומים הם הערכה בלבד ויש לאמת אותם מול רואה החשבון.</p>
+    </section>
+
+    <!-- 5. Chart -->
+    <section class="card viz-root" aria-labelledby="chart-title">
+      <h2 id="chart-title"><span class="step">5</span> שער הדולר היציג מ‑2020</h2>
+      <div class="chart-legend" aria-hidden="true">
+        <span><i class="mk mk-buy"></i> רכישה</span>
+        <span><i class="mk mk-sell"></i> מכירה</span>
+      </div>
+      <div id="chart" class="chart"></div>
+      <p id="rates-meta" class="hint"></p>
+    </section>
+
+    <!-- 6. Export -->
+    <section class="card" aria-labelledby="export-title">
+      <h2 id="export-title"><span class="step">6</span> הורדה</h2>
+      <div class="actions">
+        <button id="dl-pdf" class="btn btn-primary" type="button">הורדת PDF (טפסי 1399 + סיכום)</button>
+        <button id="dl-xlsx" class="btn" type="button">הורדת Excel של החישוב</button>
+      </div>
+      <div id="export-msg" class="msg" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי לא מחליף ייעוץ מס.</p>
+  </footer>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+  <script src="vendor/pdf-lib.min.js"></script>
+  <script src="vendor/fontkit.umd.min.js"></script>
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="data/usd_ils_rates.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/pdf1399.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

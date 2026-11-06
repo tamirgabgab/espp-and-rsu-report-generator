@@ -1,0 +1,34 @@
+name: Update USD/ILS rates
+
+# Refreshes data/usd_ils_rates.{json,js} from the Bank of Israel API.
+# The browser cannot call the BOI API directly (it rejects cross-origin
+# requests), so the app relies on this bundled copy.
+on:
+  schedule:
+    - cron: '23 16 * * 1-5' # after the daily representative rate is published
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download rates
+        run: python3 scripts/update_rates.py
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- data/; then
+            echo "No new rates"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git commit -m "Update USD/ILS representative rates"
+          git push
