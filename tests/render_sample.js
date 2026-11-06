@@ -3,11 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const Core = require('../js/core.js');
-const Pdf = require('../js/pdf1399.js');
+const Core = require('../src/js/core.js');
+const Pdf = require('../src/js/pdf1399.js');
 
 const root = path.join(__dirname, '..');
-const rates = require('../data/usd_ils_rates.json').rates;
+const rates = require('../data/rates/daily/boi.json').rates;
 const lots = [
   { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 },
   { symbol: 'QCOM', planType: 'RSU', qty: 10, dateAcquired: '2022-08-22', dateSold: '2026-05-11', proceedsUsd: 2317.04, costUsd: 1460.2, feesUsd: 0 },
@@ -18,8 +18,8 @@ const profile = { name: 'ישראל ישראלי', idNumber: '123456782', belong
 
 (async () => {
   const bytes = await Pdf.buildPdf({
-    formBytes: fs.readFileSync(path.join(root, 'assets/form-1399y-2025-blank.pdf')),
-    fontBytes: fs.readFileSync(path.join(root, 'assets/NotoSansHebrew_400Regular.ttf')),
+    formBytes: fs.readFileSync(path.join(root, 'assets/forms/form-1399y-2025-blank.pdf')),
+    fontBytes: fs.readFileSync(path.join(root, 'assets/fonts/NotoSansHebrew_400Regular.ttf')),
     profile, items,
   });
   const outDir = process.argv[2] || path.join(root, 'out');

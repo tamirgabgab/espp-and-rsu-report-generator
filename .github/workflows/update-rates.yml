@@ -5,7 +5,7 @@ name: Update USD/ILS rates (weekly)
 #   - ECB reference rate and Yahoo Finance daily close (cross-check)
 #   - Yahoo Finance 1-minute and 60-minute bars (rate at the exact sale time)
 # Yahoo keeps 1-minute bars for only 30 days, so this weekly run is what builds
-# the permanent minute archive (data/intraday/minute/YYYY-MM.json).
+# the permanent minute archive (data/rates/intraday/minute/YYYY-MM.json).
 # The browser cannot call these APIs directly (CORS), so the app uses these files.
 on:
   schedule:
@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Download rates from all sources
-        run: python3 scripts/update_rates.py
+        run: python3 tools/update_rates.py
       - name: Commit if changed
         run: |
           if [ -z "$(git status --porcelain -- data/)" ]; then

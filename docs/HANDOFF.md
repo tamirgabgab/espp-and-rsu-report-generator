@@ -42,8 +42,8 @@ each work session.
   localStorage. They are never committed.
 
 ### Built
-- Static app: `index.html`, `css/`, `js/`, `vendor/`, `assets/`, `data/`.
-- `js/core.js` holds the calculation and parser. `js/pdf1399.js` holds the PDF
+- Static app: `index.html`, `src/`, `vendor/`, `assets/`, `data/` (see the layout table in README).
+- `src/js/core.js` holds the calculation and parser. `src/js/pdf1399.js` holds the PDF
   filling, with field coordinates calibrated on the 2025 form.
 - 13 unit tests (`npm test`). `tests/render_sample.js` renders a 3-lot sample
   to `out/` for visual checks.
@@ -59,16 +59,16 @@ each work session.
 - The site is live at https://tamirgabgab.github.io/espp-and-rsu-report-generator/.
 
 ### Rate sources
-- `scripts/update_rates.py` now downloads four sources:
+- `tools/update_rates.py` now downloads four sources:
 
   | Source | What | File | Role |
   |---|---|---|---|
-  | BOI | representative rate | `data/usd_ils_rates.*` | the form |
-  | ECB | via Frankfurter | `data/usd_ils_ecb.json` | cross-check |
-  | Yahoo | `ILS=X` daily close | `data/usd_ils_yahoo.json` | cross-check |
-  | Yahoo | 1m and 60m bars | `data/intraday/` | rate at sale time, information only |
+  | BOI | representative rate | `data/rates/daily/boi.*` | the form |
+  | ECB | via Frankfurter | `data/rates/daily/ecb.json` | cross-check |
+  | Yahoo | `ILS=X` daily close | `data/rates/daily/yahoo.json` | cross-check |
+  | Yahoo | 1m and 60m bars | `data/rates/intraday/` | rate at sale time, information only |
 
-- ECB and Yahoo daily are bundled for the browser in `data/usd_ils_secondary.js`.
+- ECB and Yahoo daily are bundled for the browser in `data/rates/daily/secondary.js`.
 - If one source fails, the others still run. The run fails only if BOI fails.
 - Yahoo limits:
   - 1-minute bars: last 30 days, at most 7 days per request;
@@ -84,7 +84,7 @@ each work session.
   | Yahoo | 0.22% | 1.37% | 3.37% |
 
   The warning thresholds are 1% for ECB and 1.5% for Yahoo (`CHECK_THRESHOLDS`
-  in `js/core.js`).
+  in `src/js/core.js`).
 - The workflow became weekly: Saturday 19:41 UTC, plus manual dispatch.
 
 ### Sale time and rate control
@@ -105,10 +105,31 @@ each work session.
 - Intraday data comes from Yahoo, kept in a weekly archive.
 - All sources update weekly.
 
+## Done (session 1, repository reorganisation)
+
+- Files moved into folders, with history kept through `git mv`:
+
+  | Old path | New path |
+  |---|---|
+  | `js/`, `css/` | `src/js/`, `src/css/` |
+  | blank form | `assets/forms/` |
+  | font + licenses | `assets/fonts/` |
+  | vendor licenses | `vendor/licenses/` (plus `vendor/README.md`) |
+  | daily rates | `data/rates/daily/{boi,ecb,yahoo}.json`, `boi.js`, `secondary.js` |
+  | intraday rates | `data/rates/intraday/` |
+  | updater script | `tools/update_rates.py` |
+  | this file | `docs/HANDOFF.md` |
+
+- `index.html` stays at the root, so the GitHub Pages settings are unchanged.
+- The README is now short: app link, quick start, docs table and repository
+  layout.
+- Detailed docs moved to `docs/`: `user-guide.md`, `tax-calculation.md`,
+  `exchange-rates.md` and `development.md`.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
-   `COLUMN_ALIASES` in `js/core.js` if headers differ. Things to check:
+   `COLUMN_ALIASES` in `src/js/core.js` if headers differ. Things to check:
    - the "Adjusted Cost Basis" column for RSU rows;
    - whether "Total Proceeds" is net of fees.
 2. **Minute archive coverage.** The minute archive starts in October 2026; earlier
@@ -119,9 +140,9 @@ each work session.
      continues; the next run catches up as long as it is within 30 days.
 3. **Form edition per tax year.** Only the 2025 form (`1399y-2025`) is bundled.
    When the 2026 form is published:
-   - add it under `assets/`;
+   - add it under `assets/forms/`;
    - let the app pick the form by sale year;
-   - re-calibrate `FIELD_MAP` in `js/pdf1399.js` with `node tests/render_sample.js`.
+   - re-calibrate `FIELD_MAP` in `src/js/pdf1399.js` with `npm run sample`.
 4. **Section 102 trustee sales.** If the trustee already withheld tax, a 1399
    may not be needed at all. Consider a per-row "tax withheld" field that is
    excluded from the advance-payment totals.

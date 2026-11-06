@@ -165,15 +165,15 @@
   async function intradayRate(lot) {
     const epoch = Core.nyToUtcEpoch(lot.dateSold, lot.timeSold);
     if (epoch === null) return null;
-    if (!intradayIndex) intradayIndex = (await loadJson('data/intraday/index.json')) || { minute: [], hourly: [] };
+    if (!intradayIndex) intradayIndex = (await loadJson('data/rates/intraday/index.json')) || { minute: [], hourly: [] };
     const d = new Date(epoch * 1000);
     const month = d.toISOString().slice(0, 7), year = month.slice(0, 4);
     if (intradayIndex.minute.includes(month)) {
-      const r = Core.intradayAt(await loadJson(`data/intraday/minute/${month}.json`), epoch, 5);
+      const r = Core.intradayAt(await loadJson(`data/rates/intraday/minute/${month}.json`), epoch, 5);
       if (r) return { ...r, epoch, kind: 'דקה' };
     }
     if (intradayIndex.hourly.includes(year)) {
-      const r = Core.intradayAt(await loadJson(`data/intraday/hourly/${year}.json`), epoch, 1);
+      const r = Core.intradayAt(await loadJson(`data/rates/intraday/hourly/${year}.json`), epoch, 1);
       if (r) return { ...r, epoch, kind: 'שעה' };
     }
     return { epoch, missing: true };
@@ -340,8 +340,8 @@
     setMsg(msg, 'מכין את ה‑PDF...', '');
     try {
       const [formBytes, fontBytes] = await Promise.all([
-        fetchBytes('assets/form-1399y-2025-blank.pdf'),
-        fetchBytes('assets/NotoSansHebrew_400Regular.ttf'),
+        fetchBytes('assets/forms/form-1399y-2025-blank.pdf'),
+        fetchBytes('assets/fonts/NotoSansHebrew_400Regular.ttf'),
       ]);
       const items = ok.map(it => ({ lot: { ...it.lot, sec102: it.lot.sec102 ?? profile.sec102 }, calc: it.calc }));
       const bytes = await window.Pdf1399.buildPdf({ formBytes, fontBytes, profile: { ...profile, signDate: profile.signDate || today() }, items });

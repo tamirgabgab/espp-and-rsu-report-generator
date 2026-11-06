@@ -5,7 +5,7 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "sample": "node tests/render_sample.js",
-    "rates": "python3 scripts/update_rates.py",
+    "rates": "python3 tools/update_rates.py",
     "serve": "python3 -m http.server 8000"
   }
 }

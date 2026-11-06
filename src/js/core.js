@@ -265,7 +265,7 @@
 
   /**
    * Find the market rate at a UTC epoch in an intraday file written by
-   * scripts/update_rates.py ({interval, t0, t[], c[]}). Bars are stamped with their
+   * tools/update_rates.py ({interval, t0, t[], c[]}). Bars are stamped with their
    * START time but hold the CLOSE price, so the bar whose close is nearest to the
    * moment is used; if it is missing, the nearest earlier bar within maxGapBars.
    * Returned `ts` is the close time of the bar used.

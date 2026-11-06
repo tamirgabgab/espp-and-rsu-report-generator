@@ -1,7 +1,7 @@
 // Run with: node --test tests/
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Core = require('../js/core.js');
+const Core = require('../src/js/core.js');
 
 // Rates keyed by date, mirroring the examples in Income Tax Circular 10/2025.
 const R = (buy, sell) => ({ '2017-01-01': buy, '2017-06-01': sell });
@@ -52,7 +52,7 @@ test('USD gain but ILS loss -> no gain and no loss', () => {
 });
 
 test('user example (QCOM ESPP) with official BOI rates', () => {
-  const rates = require('../data/usd_ils_rates.json').rates;
+  const rates = require('../data/rates/daily/boi.json').rates;
   const c = Core.computeLot({ dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 }, rates);
   assert.equal(c.buy.rate, 3.635);
   assert.equal(c.sell.rate, 2.909);

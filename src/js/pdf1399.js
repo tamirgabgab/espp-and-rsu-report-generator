@@ -7,7 +7,7 @@
  * All coordinates in FIELD_MAP are PDF points measured from the TOP-LEFT of
  * the A4 page (595.28 x 841.89) - converted to pdf-lib's bottom-left origin in
  * draw helpers. They were calibrated against the 2025 edition of the form
- * (assets/form-1399y-2025-blank.pdf). A new yearly edition may need re-calibration:
+ * (assets/forms/form-1399y-2025-blank.pdf). A new yearly edition may need re-calibration:
  * run `node tests/render_sample.js` and compare the PNG output.
  */
 (function (root, factory) {
@@ -19,7 +19,7 @@
 
   const getLibs = () => {
     if (typeof module === 'object' && module.exports && typeof require === 'function') {
-      return { PDFLib: require('../vendor/pdf-lib.min.js'), fontkit: require('../vendor/fontkit.umd.min.js'), Core: require('./core.js') };
+      return { PDFLib: require('../../vendor/pdf-lib.min.js'), fontkit: require('../../vendor/fontkit.umd.min.js'), Core: require('./core.js') };
     }
     return { PDFLib: root.PDFLib, fontkit: root.fontkit, Core: root.Core };
   };
