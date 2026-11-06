@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>מחולל טופס 1399</title>
   <meta name="description" content="הפקת טופס 1399 (י) ממולא ממכירות ESPP ו-RSU ב-E*Trade, לפי השער היציג של בנק ישראל">
   <link rel="stylesheet" href="src/css/style.css">
@@ -11,115 +11,103 @@
   <header class="page-header">
     <div class="wrap">
       <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
-      <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים PDF של טופס 1399 (י) ממולא לכל lot ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
+      <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
     </div>
   </header>
 
   <main class="wrap">
-    <!-- 1. Personal details -->
-    <section class="card" aria-labelledby="profile-title">
-      <h2 id="profile-title"><span class="step">1</span> פרטים אישיים</h2>
-      <p class="hint">נשמרים רק בדפדפן הזה (localStorage) ולא נכנסים לשום קובץ בריפו.</p>
-      <div class="grid">
-        <label>שם המוכר
-          <input id="p-name" type="text" autocomplete="name">
-        </label>
-        <label>מספר תעודת זהות / מספר תיק
-          <input id="p-id" type="text" inputmode="numeric" maxlength="9" autocomplete="off">
-        </label>
-        <label>שייכות
-          <select id="p-belonging">
-            <option value="0">0 - אין שייכות</option>
-            <option value="2">2 - "בן זוג רשום"</option>
-            <option value="3">3 - בן/בת זוג</option>
-          </select>
-        </label>
-        <label>מקום הנכס
-          <select id="p-place">
-            <option value="israel">ישראל</option>
-            <option value="abroad">חו"ל</option>
-          </select>
-        </label>
-        <label>תאריך על הטופס
-          <input id="p-date" type="date">
-        </label>
-        <label class="check">
-          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 (ברירת מחדל לכל העסקאות)
-        </label>
+    <!-- Result first: headline numbers (hidden until there is at least one valid lot) -->
+    <section id="hero" class="hero" aria-label="תוצאה" hidden>
+      <div class="tile">
+        <div class="tile-label">רווח ריאלי נטו</div>
+        <div class="tile-value" id="t-net"></div>
+        <div class="tile-sub" id="t-net-sub"></div>
+      </div>
+      <div class="tile tile-accent">
+        <div class="tile-label">מס משוער (25%)</div>
+        <div class="tile-value" id="t-tax"></div>
+        <div class="tile-sub" id="t-tax-sub"></div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">המקדמה הבאה</div>
+        <div class="tile-value" id="t-due"></div>
+        <div class="tile-sub" id="t-due-sub"></div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">מכירות</div>
+        <div class="tile-value" id="t-count"></div>
+        <div class="tile-sub" id="t-count-sub"></div>
       </div>
     </section>
 
-    <!-- 2. Import -->
-    <section class="card" aria-labelledby="import-title">
-      <h2 id="import-title"><span class="step">2</span> ייבוא עסקאות מ‑E*Trade</h2>
+    <!-- 1. Import -->
+    <section class="card" id="import" aria-labelledby="import-title">
+      <h2 id="import-title"><span class="step">1</span> ייבוא עסקאות</h2>
+      <label class="dropzone" id="dropzone" for="file">
+        <svg class="dz-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="dz-title">גוררים לכאן את קובץ ה‑Excel מ‑E*Trade</span>
+        <span class="dz-sub">או לוחצים לבחירת קובץ · <bdi>G&amp;L_Expanded.xlsx</bdi> או CSV</span>
+        <input id="file" type="file" accept=".xlsx,.xls,.csv" class="visually-hidden">
+      </label>
+      <div class="actions">
+        <button id="add-row" class="btn" type="button">הוספת עסקה ידנית</button>
+        <button id="load-example" class="btn btn-quiet" type="button">טעינת דוגמה</button>
+      </div>
       <details class="howto">
         <summary>איך מורידים את הקובץ מ‑E*Trade?</summary>
         <ol>
-          <li>נכנסים ל‑E*Trade, ובתפריט <b>Stock Plan</b> בוחרים <b>My Account</b> ואז <b>Gains &amp; Losses</b>.</li>
-          <li>בוחרים את שנת המס (Tax Year) ולוחצים <b>Download</b> ואז <b>Download Expanded</b>. מתקבל קובץ <code>G&amp;L_Expanded.xlsx</code>.</li>
-          <li>מעלים את הקובץ כאן. כל שורת Sell היא lot נפרד עם תאריך רכישה משלו.</li>
+          <li>ב‑E*Trade נכנסים ל‑<b>Stock Plan</b>, משם ל‑<b>My Account</b> ואז ל‑<b>Gains &amp; Losses</b>.</li>
+          <li>בוחרים את שנת המס (Tax Year), לוחצים <b>Download</b> ואז <b>Download Expanded</b>.</li>
+          <li>מעלים כאן את הקובץ שירד. כל שורת Sell בקובץ היא מכירה נפרדת (lot) עם תאריך רכישה משלה.</li>
+          <li>אם רוצים לראות את השער בשעת המכירה: את שעת הביצוע מוצאים ב‑<b>View Order Details</b>, ומדביקים אותה בעריכת העסקה.</li>
         </ol>
       </details>
-      <div class="actions">
-        <label class="btn btn-primary file-btn">
-          העלאת קובץ Excel / CSV
-          <input id="file" type="file" accept=".xlsx,.xls,.csv" hidden>
-        </label>
-        <button id="add-row" class="btn" type="button">הוספת שורה ידנית</button>
-        <button id="load-example" class="btn" type="button">טעינת דוגמה</button>
-        <button id="clear-all" class="btn btn-quiet" type="button">מחיקת כל העסקאות</button>
-      </div>
       <div id="import-msg" class="msg" role="status" aria-live="polite"></div>
     </section>
 
-    <!-- 3. Transactions -->
-    <section class="card" aria-labelledby="tx-title">
-      <h2 id="tx-title"><span class="step">3</span> עסקאות (lot לכל שורה)</h2>
-      <p class="hint">השערים נלקחים אוטומטית מהשער היציג של בנק ישראל. אם אין שער באותו יום (סוף שבוע או חג), נלקח השער האחרון שפורסם לפניו. כדי לדרוס שער, מקלידים ערך בשדה השער.</p>
-      <div class="table-scroll">
-        <table id="tx-table">
+    <!-- 2. Lots -->
+    <section class="card" id="lots" aria-labelledby="lots-title">
+      <div class="card-head">
+        <h2 id="lots-title"><span class="step">2</span> עסקאות</h2>
+        <div class="card-tools">
+          <div id="year-filter" class="chips" role="radiogroup" aria-label="סינון לפי שנת מס" hidden></div>
+          <button id="clear-all" class="btn btn-quiet btn-sm" type="button" hidden>מחיקת הכל</button>
+        </div>
+      </div>
+      <p class="hint" id="lots-hint">כל שורה היא lot: מניות שנקנו בתאריך אחד ונמכרו בתאריך אחד. השערים נלקחים מהשער היציג של בנק ישראל. בלחיצה על "איך חושב?" רואים את החישוב המלא ואת בקרת השערים.</p>
+      <div class="lots-desktop">
+        <table class="lots-table">
           <thead>
             <tr>
-              <th>נייר</th><th>תוכנית</th><th>כמות</th><th>ת. רכישה</th><th>ת. מכירה</th><th>שעת מכירה<br><small>ניו יורק, לא חובה</small></th>
-              <th>תמורה $</th><th>עלות $<br><small>Adjusted</small></th><th>עמלות $</th><th>102</th>
-              <th>שער רכישה</th><th>שער מכירה</th>
-              <th>תמורה ₪</th><th>עלות ₪</th><th>רווח נומינלי ₪</th><th>אינפלציוני ₪</th><th>רווח ריאלי ₪</th><th>מס 25% ₪</th><th></th>
+              <th scope="col"><span class="visually-hidden">סטטוס</span></th>
+              <th scope="col">נייר</th><th scope="col">כמות</th><th scope="col">נרכש</th><th scope="col">נמכר</th>
+              <th scope="col">תמורה $</th><th scope="col">עלות $</th><th scope="col">רווח ריאלי ₪</th><th scope="col">מס ₪</th>
+              <th scope="col"><span class="visually-hidden">פעולות</span></th>
             </tr>
           </thead>
-          <tbody id="tx-body"></tbody>
+          <tbody id="lots-body"></tbody>
         </table>
       </div>
-      <p id="empty-state" class="empty">אין עסקאות עדיין. כדי להתחיל, מעלים קובץ מ‑E*Trade, מוסיפים שורה ידנית או טוענים את הדוגמה.</p>
-    </section>
-
-    <!-- 3b. Rate control -->
-    <section class="card" aria-labelledby="check-title">
-      <h2 id="check-title"><span class="step">✓</span> בקרת שערים</h2>
-      <p class="hint">הטופס מחושב תמיד לפי השער היציג של בנק ישראל. כאן מוצגים לצורך בקרה גם שער הבנק המרכזי האירופי (ECB), שער הסגירה ב‑Yahoo Finance, ושער השוק בשעת המכירה עצמה (אם הוזנה שעה בטבלה). שורה שבה הסטייה מבנק ישראל חריגה מסומנת בצהוב.</p>
-      <div class="table-scroll">
-        <table id="check-table">
-          <thead>
-            <tr>
-              <th>#</th><th>נייר</th><th>אירוע</th><th>תאריך</th><th>בנק ישראל (יציג)</th><th>ECB</th><th>Yahoo סגירה</th>
-              <th>שעה (ניו יורק)</th><th>שער בשעת המכירה</th><th>הפרש מהיציג</th><th>השפעה על התמורה ₪</th>
-            </tr>
-          </thead>
-          <tbody id="check-body"></tbody>
-        </table>
+      <div class="lots-mobile" id="lots-cards"></div>
+      <div id="empty-state" class="empty">
+        <p class="empty-title">עוד אין עסקאות</p>
+        <p>כדי להתחיל, מעלים את הקובץ מ‑E*Trade למעלה, מוסיפים עסקה ידנית, או טוענים את הדוגמה.</p>
       </div>
-      <p id="check-meta" class="hint"></p>
     </section>
 
-    <!-- 4. Summary -->
-    <section class="card" aria-labelledby="sum-title">
-      <h2 id="sum-title"><span class="step">4</span> סיכום וקיזוז הפסדים</h2>
+    <!-- 3. Summary + explanation -->
+    <section class="card" id="summary-card" aria-labelledby="sum-title">
+      <h2 id="sum-title"><span class="step">3</span> סיכום וקיזוז הפסדים</h2>
       <div id="summary" class="summary"></div>
-      <p class="hint">בדוח חצי‑שנתי משלמים מקדמה עד 31.7 (על ינואר עד יוני) ועד 31.1 בשנה הבאה (על יולי עד דצמבר). הסכומים הם הערכה בלבד ויש לאמת אותם מול רואה החשבון.</p>
+      <details class="explain-all" id="explain-all">
+        <summary>איך מחושב המס? הסבר כללי עם נוסחאות</summary>
+        <div id="explain-body" class="explain-body"></div>
+      </details>
     </section>
 
-    <!-- 5. Chart -->
+    <!-- Chart -->
     <section class="card viz-root" aria-labelledby="chart-title">
-      <h2 id="chart-title"><span class="step">5</span> שער הדולר היציג מ‑2020</h2>
+      <h2 id="chart-title">שער הדולר היציג מ‑2020</h2>
       <div class="chart-legend" aria-hidden="true">
         <span><i class="mk mk-buy"></i> רכישה</span>
         <span><i class="mk mk-sell"></i> מכירה</span>
@@ -128,21 +116,161 @@
       <p id="rates-meta" class="hint"></p>
     </section>
 
-    <!-- 6. Export -->
-    <section class="card" aria-labelledby="export-title">
-      <h2 id="export-title"><span class="step">6</span> הורדה</h2>
-      <div class="actions">
-        <button id="dl-pdf" class="btn btn-primary" type="button">הורדת PDF (טפסי 1399 + סיכום)</button>
-        <button id="dl-xlsx" class="btn" type="button">הורדת Excel של החישוב</button>
+    <!-- 4. Details + download -->
+    <section class="card" id="export" aria-labelledby="export-title">
+      <h2 id="export-title"><span class="step">4</span> פרטים לטופס והורדה</h2>
+      <p class="hint">הפרטים נשמרים רק בדפדפן הזה ולא נשלחים לשום מקום.</p>
+      <div class="grid">
+        <div class="field">
+          <label for="p-name">שם המוכר</label>
+          <input id="p-name" type="text" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="p-id">מספר תעודת זהות</label>
+          <input id="p-id" type="text" inputmode="numeric" maxlength="9" autocomplete="off" aria-describedby="p-id-err">
+          <p class="field-error" id="p-id-err"></p>
+        </div>
+        <div class="field">
+          <label for="p-belonging">שייכות</label>
+          <select id="p-belonging">
+            <option value="0">0 - אין שייכות</option>
+            <option value="2">2 - "בן זוג רשום"</option>
+            <option value="3">3 - בן/בת זוג</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="p-place">מקום הנכס</label>
+          <select id="p-place">
+            <option value="israel">ישראל</option>
+            <option value="abroad">חו"ל</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="p-date">תאריך על הטופס</label>
+          <input id="p-date" type="date">
+        </div>
+        <label class="check">
+          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 (ברירת מחדל לכל העסקאות)
+        </label>
       </div>
+      <div class="actions">
+        <button id="dl-pdf" class="btn btn-primary" type="button">הורדת PDF</button>
+        <button id="preview-pdf" class="btn" type="button">תצוגה מקדימה</button>
+        <button id="dl-xlsx" class="btn" type="button">הורדת Excel</button>
+      </div>
+      <p class="hint" id="export-scope"></p>
       <div id="export-msg" class="msg" role="status" aria-live="polite"></div>
     </section>
   </main>
 
   <footer class="wrap foot">
-    <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי לא מחליף ייעוץ מס.</p>
+    <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
   </footer>
 
+  <!-- Sticky result bar -->
+  <div id="sticky" class="sticky-bar" hidden>
+    <div class="wrap sticky-inner">
+      <div class="sticky-nums">
+        <span>רווח ריאלי <b id="s-net"></b></span>
+        <span>מס <b id="s-tax"></b></span>
+      </div>
+      <button id="s-dl" class="btn btn-primary" type="button">הורדת PDF</button>
+    </div>
+  </div>
+
+  <!-- Edit lot drawer -->
+  <dialog id="lot-dialog" class="drawer" aria-labelledby="lot-dialog-title">
+    <form id="lot-form" method="dialog" novalidate>
+      <header class="drawer-head">
+        <h2 id="lot-dialog-title">עריכת עסקה</h2>
+        <button type="button" class="icon-btn" data-close aria-label="סגירה" title="סגירה (Esc)">×</button>
+      </header>
+      <div class="drawer-body">
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="f-symbol">סימול</label>
+            <input id="f-symbol" name="symbol" type="text" dir="ltr" autocapitalize="characters" placeholder="QCOM">
+          </div>
+          <div class="field">
+            <label for="f-plan">תוכנית</label>
+            <select id="f-plan" name="planType">
+              <option>ESPP</option><option>RSU</option><option>Options</option><option>אחר</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-qty">כמות מניות</label>
+            <input id="f-qty" name="qty" type="number" inputmode="decimal" step="any" min="0">
+          </div>
+          <label class="check"><input id="f-102" name="sec102" type="checkbox"> סעיף 102</label>
+          <div class="field">
+            <label for="f-dateAcquired">תאריך רכישה</label>
+            <input id="f-dateAcquired" name="dateAcquired" type="date" required aria-describedby="e-dateAcquired">
+            <p class="field-error" id="e-dateAcquired"></p>
+          </div>
+          <div class="field">
+            <label for="f-dateSold">תאריך מכירה</label>
+            <input id="f-dateSold" name="dateSold" type="date" required aria-describedby="e-dateSold">
+            <p class="field-error" id="e-dateSold"></p>
+          </div>
+          <div class="field">
+            <label for="f-proceedsUsd">תמורה ($)</label>
+            <input id="f-proceedsUsd" name="proceedsUsd" type="number" inputmode="decimal" step="0.01" min="0" required aria-describedby="e-proceedsUsd">
+            <p class="field-error" id="e-proceedsUsd"></p>
+          </div>
+          <div class="field">
+            <label for="f-costUsd">עלות ($) <small>Adjusted Cost Basis</small></label>
+            <input id="f-costUsd" name="costUsd" type="number" inputmode="decimal" step="0.01" min="0" required aria-describedby="e-costUsd">
+            <p class="field-error" id="e-costUsd"></p>
+          </div>
+          <div class="field">
+            <label for="f-feesUsd">עמלות ($) <small>אם לא נוכו מהתמורה</small></label>
+            <input id="f-feesUsd" name="feesUsd" type="number" inputmode="decimal" step="0.01" min="0">
+          </div>
+          <div class="field">
+            <label for="f-timeSold">שעת מכירה <small>שעון ניו יורק, לא חובה</small></label>
+            <input id="f-timeSold" name="timeSold" type="time">
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-paste">הדבקה מ‑Order Details <small>מזהה תאריך ושעה אוטומטית</small></label>
+          <textarea id="f-paste" rows="2" dir="ltr" placeholder="Executed 05/11/2026 10:35:12 AM ET"></textarea>
+          <p class="field-note" id="f-paste-note" aria-live="polite"></p>
+        </div>
+        <details class="advanced">
+          <summary>שערים ידניים (מתקדם)</summary>
+          <p class="hint">משאירים ריק כדי להשתמש בשער היציג של בנק ישראל.</p>
+          <div class="grid grid-2">
+            <div class="field">
+              <label for="f-rateBuy">שער רכישה</label>
+              <input id="f-rateBuy" name="rateBuy" type="number" inputmode="decimal" step="0.001" min="0">
+            </div>
+            <div class="field">
+              <label for="f-rateSell">שער מכירה</label>
+              <input id="f-rateSell" name="rateSell" type="number" inputmode="decimal" step="0.001" min="0">
+            </div>
+          </div>
+        </details>
+      </div>
+      <footer class="drawer-foot">
+        <button type="submit" class="btn btn-primary" id="lot-save">שמירת העסקה</button>
+        <button type="button" class="btn" data-close>ביטול</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- PDF preview -->
+  <dialog id="preview-dialog" class="sheet" aria-labelledby="preview-title">
+    <header class="drawer-head">
+      <h2 id="preview-title">תצוגה מקדימה</h2>
+      <div class="head-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="preview-dl">הורדת PDF</button>
+        <button type="button" class="icon-btn" data-close aria-label="סגירה" title="סגירה (Esc)">×</button>
+      </div>
+    </header>
+    <div class="preview-pages" id="preview-pages"></div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
 
   <script src="vendor/pdf-lib.min.js"></script>

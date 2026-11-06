@@ -140,3 +140,32 @@ test('intraday lookup picks the bar whose close is nearest to the moment', () =>
   assert.equal(Core.intradayAt(file, t0 + 60 * 20), null);     // beyond the data
   assert.equal(Core.intradayAt(file, t0 - 60), null);
 });
+
+test('closed form min/max rule agrees with the step-by-step circular logic', () => {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 2000; i++) {
+    const rb = 2.8 + rnd() * 1.4, rs = 2.8 + rnd() * 1.4;
+    const lot = { dateAcquired: '2020-01-01', dateSold: '2021-01-01', costUsd: 100 + rnd() * 5000, proceedsUsd: 100 + rnd() * 5000, feesUsd: rnd() < 0.3 ? rnd() * 20 : 0 };
+    const rates = { '2020-01-01': +rb.toFixed(3), '2021-01-01': +rs.toFixed(3) };
+    const c = Core.computeLot(lot, rates);
+    const cf = Core.closedFormReal(lot, rates['2020-01-01'], rates['2021-01-01']);
+    assert.ok(Math.abs(c.real - cf.real) <= 3, `lot ${i}: step ${c.real} vs closed ${cf.real}`);
+  }
+});
+
+test('Israeli ID check digit', () => {
+  assert.equal(Core.isValidIsraeliId('123456782'), true);
+  assert.equal(Core.isValidIsraeliId('123456789'), false);
+  assert.equal(Core.isValidIsraeliId('12345678'), false);
+  assert.equal(Core.isValidIsraeliId('000000018'), true);
+  assert.equal(Core.isValidIsraeliId('18'), true);
+  assert.equal(Core.isValidIsraeliId(''), false);
+});
+
+test('order text paste extracts date and 24h time', () => {
+  assert.deepEqual(Core.parseOrderText('Executed 05/11/2026 10:35:12 AM ET'), { date: '2026-05-11', time: '10:35' });
+  assert.deepEqual(Core.parseOrderText('Order Executed: 09/15/2026 03:05 PM EDT'), { date: '2026-09-15', time: '15:05' });
+  assert.deepEqual(Core.parseOrderText('12:10 AM'), { date: null, time: '00:10' });
+  assert.deepEqual(Core.parseOrderText('nothing here'), { date: null, time: null });
+});

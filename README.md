@@ -16,6 +16,9 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
   cross-check it.
 - **Real-gain calculation** per Income Tax Circular 10/2025, with losses offset
   per half-year and per year.
+- **Step-by-step explanation.** Every lot shows the general formula with your
+  own numbers substituted in. A built-in explainer also covers capital-gains tax
+  vs. marginal (salary) tax.
 - **Optional rate at the exact sale time** (minute / hour), for your
   information only.
 - **Private.** Everything runs in your browser. Nothing is uploaded, and your
@@ -24,11 +27,15 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
 ## Quick start
 
 1. Open the [app](https://tamirgabgab.github.io/espp-and-rsu-report-generator/).
-2. Enter your name and ID number.
-3. Upload E*Trade's **Gains & Losses → Download Expanded** file. You can also
-   click **"טעינת דוגמה"** (load example) to try it out.
-4. Check the table and the rate-control section.
-5. Download the **PDF** (forms + summary) and/or the **Excel** file.
+2. **Import.** Drag E*Trade's **Gains & Losses → Download Expanded** file onto
+   the page. You can also click **"טעינת דוגמה"** (load example) to try it out.
+3. **Check the headline numbers.** Real gain, estimated tax and the next
+   advance payment appear at the top right away.
+4. **Review each lot.** Open **"איך חושב?"** (how was it calculated?) to see
+   the formula with your numbers and the rate cross-check. Fix anything marked
+   ⚠ with the edit button.
+5. **Download.** Enter your name and ID number, preview the PDF, then download
+   it (forms + summary) and/or the Excel file.
 
 The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 
@@ -53,7 +60,7 @@ The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 | `assets/fonts/` | Hebrew font embedded in the PDF, with its license |
 | `data/rates/daily/` | Daily USD/ILS rates: Bank of Israel, ECB and Yahoo (`.json`, plus `.js` for the browser) |
 | `data/rates/intraday/` | Yahoo 1-minute (by month) and 1-hour (by year) rates |
-| `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS) and their licenses |
+| `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS, pdf.js for the preview) and their licenses |
 | `tools/` | `update_rates.py`, which downloads all rate sources |
 | `tests/` | Unit tests and a sample PDF renderer |
 | `docs/` | Documentation |

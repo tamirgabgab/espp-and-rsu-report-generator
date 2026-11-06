@@ -1,4 +1,4 @@
-/* UI glue: state, table editing, import, summary, chart and downloads. */
+/* UI: state, import, lot list + edit drawer, explanations, summary, chart, export. */
 (function () {
   'use strict';
   const Core = window.Core;
@@ -7,6 +7,8 @@
   const SOURCES = { boi: RATES, ecb: SECONDARY.ecb && SECONDARY.ecb.rates, yahoo: SECONDARY.yahoo && SECONDARY.yahoo.rates };
   const LS_PROFILE = 'f1399.profile';
   const LS_LOTS = 'f1399.lots';
+  const FORM_URL = 'assets/forms/form-1399y-2025-blank.pdf';
+  const FONT_URL = 'assets/fonts/NotoSansHebrew_400Regular.ttf';
   const $ = sel => document.querySelector(sel);
 
   const store = {
@@ -17,17 +19,23 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = n => (isFinite(n) ? (n < 0 ? `(${Math.abs(n).toLocaleString('en-US')})` : n.toLocaleString('en-US')) : '');
+  const ils = n => `${fmt(n)} ₪`;
+  const usd = n => (isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+  const signed = n => (n < 0 ? `−${Math.abs(n).toLocaleString('en-US')}` : n.toLocaleString('en-US'));
+  const L = s => `<bdi class="ltr">${s}</bdi>`; // isolate a left-to-right formula inside Hebrew text
   let nextId = 1;
 
   // ------------------------------------------------------------ state
 
   const profile = Object.assign({ name: '', idNumber: '', belonging: '2', place: 'israel', sec102: true, signDate: '' }, store.get(LS_PROFILE, {}));
   let lots = store.get(LS_LOTS, []).map(l => ({ ...l, id: nextId++ }));
+  let yearFilter = 'all';
+  const openPanels = new Set();
 
   const blankLot = () => ({ id: nextId++, symbol: '', planType: 'ESPP', qty: NaN, dateAcquired: '', dateSold: '', timeSold: '', proceedsUsd: NaN, costUsd: NaN, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '' });
 
   const EXAMPLE = [
-    { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 },
+    { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', timeSold: '11:02', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 },
   ];
 
   function persist() {
@@ -35,230 +43,361 @@
     store.set(LS_LOTS, lots.map(({ id, ...rest }) => rest));
   }
 
-  function computeAll() {
-    return lots.map(lot => ({
-      lot,
-      calc: Core.computeLot(lot, RATES, { rateBuy: lot.rateBuy, rateSell: lot.rateSell }),
-    }));
+  const sortLots = () => lots.sort((a, b) => (a.dateSold || '9').localeCompare(b.dateSold || '9') || (a.dateAcquired || '').localeCompare(b.dateAcquired || ''));
+  const yearOf = lot => (lot.dateSold ? lot.dateSold.slice(0, 4) : '');
+  const sec102Of = lot => (lot.sec102 === null || lot.sec102 === undefined ? !!profile.sec102 : !!lot.sec102);
+
+  function computeItem(lot) {
+    const calc = Core.computeLot(lot, RATES, { rateBuy: lot.rateBuy, rateSell: lot.rateSell });
+    const checks = [lot.dateAcquired, lot.dateSold].filter(Boolean).map(d => Core.crossCheck(SOURCES, d));
+    return { lot, calc, checks, rateWarn: checks.some(c => c.warn) };
   }
 
-  // ------------------------------------------------------------ profile form
+  /** Lots in the current year filter (lots without a sale date stay visible so they can be fixed). */
+  function visibleItems() {
+    return lots.filter(l => yearFilter === 'all' || !l.dateSold || yearOf(l) === yearFilter).map(computeItem);
+  }
 
-  function bindProfile() {
-    const fields = { 'p-name': 'name', 'p-id': 'idNumber', 'p-belonging': 'belonging', 'p-place': 'place', 'p-date': 'signDate' };
-    for (const [id, key] of Object.entries(fields)) {
-      const input = document.getElementById(id);
-      input.value = profile[key] || (key === 'signDate' ? today() : '');
-      input.addEventListener('input', () => { profile[key] = input.value.trim(); persist(); });
+  // ------------------------------------------------------------ toasts
+
+  function toast(text, action) {
+    const host = $('#toasts');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<span>${esc(text)}</span>`;
+    let timer;
+    const close = () => { clearTimeout(timer); el.remove(); };
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = action.label;
+      b.addEventListener('click', () => { action.run(); close(); });
+      el.appendChild(b);
     }
-    const cb = $('#p-102');
-    cb.checked = !!profile.sec102;
-    cb.addEventListener('change', () => { profile.sec102 = cb.checked; persist(); renderTable(); });
+    host.appendChild(el);
+    timer = setTimeout(close, action ? 7000 : 3500);
   }
 
-  // ------------------------------------------------------------ table
+  // ------------------------------------------------------------ render all
 
-  const num = v => (isFinite(v) ? v : '');
-
-  function rowHtml(lot) {
-    const sec102 = lot.sec102 === null || lot.sec102 === undefined ? profile.sec102 : lot.sec102;
-    const autoBuy = Core.lookupRate(RATES, lot.dateAcquired);
-    const autoSell = Core.lookupRate(RATES, lot.dateSold);
-    const ph = r => (r ? `${r.rate}${r.exact ? '' : '*'}` : 'ידני');
-    const tip = r => (r ? `שער יציג ${r.rate} מתאריך ${Core.formatDateIL(r.date)}${r.exact ? '' : ' (השער האחרון שפורסם לפני התאריך)'}` : 'אין שער בנתונים - יש להזין ידנית');
-    return `
-      <td><input class="sym" data-k="symbol" value="${esc(lot.symbol)}" aria-label="סימול"></td>
-      <td><select data-k="planType" aria-label="סוג תוכנית">
-        ${['ESPP', 'RSU', 'Options', 'אחר'].map(p => `<option ${p === lot.planType ? 'selected' : ''}>${p}</option>`).join('')}
-      </select></td>
-      <td><input class="qty" type="number" step="any" data-k="qty" value="${num(lot.qty)}" aria-label="כמות"></td>
-      <td><input type="date" data-k="dateAcquired" value="${esc(lot.dateAcquired)}" aria-label="תאריך רכישה"></td>
-      <td><input type="date" data-k="dateSold" value="${esc(lot.dateSold)}" aria-label="תאריך מכירה"></td>
-      <td><input type="time" data-k="timeSold" value="${esc(lot.timeSold || '')}" aria-label="שעת מכירה בשעון ניו יורק" title="שעת הביצוע מ-Order Details ב-E*Trade (שעון ניו יורק)"></td>
-      <td><input type="number" step="0.01" data-k="proceedsUsd" value="${num(lot.proceedsUsd)}" aria-label="תמורה בדולרים"></td>
-      <td><input type="number" step="0.01" data-k="costUsd" value="${num(lot.costUsd)}" aria-label="עלות בדולרים"></td>
-      <td><input type="number" step="0.01" data-k="feesUsd" value="${num(lot.feesUsd)}" aria-label="עמלות בדולרים"></td>
-      <td><input type="checkbox" data-k="sec102" ${sec102 ? 'checked' : ''} aria-label="סעיף 102"></td>
-      <td><input class="rate" type="number" step="0.001" data-k="rateBuy" value="${esc(lot.rateBuy)}" placeholder="${ph(autoBuy)}" title="${esc(tip(autoBuy))}" aria-label="שער רכישה"></td>
-      <td><input class="rate" type="number" step="0.001" data-k="rateSell" value="${esc(lot.rateSell)}" placeholder="${ph(autoSell)}" title="${esc(tip(autoSell))}" aria-label="שער מכירה"></td>
-      <td class="num" data-out="proceedsIls"></td>
-      <td class="num" data-out="costIls"></td>
-      <td class="num" data-out="nominal"></td>
-      <td class="num" data-out="inflationary"></td>
-      <td class="num" data-out="real"></td>
-      <td class="num" data-out="tax"></td>
-      <td><button class="del" type="button" data-del aria-label="מחיקת שורה" title="מחיקת שורה">×</button></td>`;
-  }
-
-  function renderTable() {
-    const body = $('#tx-body');
-    body.innerHTML = '';
-    for (const lot of lots) {
-      const tr = document.createElement('tr');
-      tr.dataset.id = lot.id;
-      tr.innerHTML = rowHtml(lot);
-      body.appendChild(tr);
-      const issueTr = document.createElement('tr');
-      issueTr.className = 'issue-row';
-      issueTr.dataset.issueFor = lot.id;
-      issueTr.innerHTML = '<td class="issue" colspan="19"></td>';
-      body.appendChild(issueTr);
-    }
-    $('#empty-state').hidden = lots.length > 0;
-    refresh();
-  }
-
-  function refresh() {
-    const items = computeAll();
-    for (const { lot, calc } of items) {
-      const tr = document.querySelector(`tr[data-id="${lot.id}"]`);
-      const issueTr = document.querySelector(`tr[data-issue-for="${lot.id}"]`);
-      if (!tr) continue;
-      for (const td of tr.querySelectorAll('[data-out]')) {
-        const k = td.dataset.out;
-        td.textContent = calc.ok ? fmt(calc[k]) : '';
-        td.classList.toggle('gain', calc.ok && k === 'real' && calc.real > 0);
-        td.classList.toggle('loss', calc.ok && k === 'real' && calc.real < 0);
-      }
-      for (const key of ['rateBuy', 'rateSell']) {
-        const input = tr.querySelector(`[data-k="${key}"]`);
-        const r = Core.lookupRate(RATES, key === 'rateBuy' ? lot.dateAcquired : lot.dateSold);
-        input.placeholder = r ? `${r.rate}${r.exact ? '' : '*'}` : 'ידני';
-      }
-      tr.classList.toggle('has-issue', !calc.ok);
-      issueTr.hidden = calc.ok;
-      issueTr.firstElementChild.textContent = calc.ok ? '' : `⚠ ${calc.issues.join(' · ')}`;
-    }
-    renderSummary(items);
-    renderChecks(items);
+  function render() {
+    sortLots();
+    const items = visibleItems();
+    renderYearFilter();
+    renderLots(items);
+    const ok = items.filter(it => it.calc.ok);
+    const groups = Core.summarize(ok);
+    renderHero(ok, groups);
+    renderSummary(groups);
+    renderExplainAll(ok[0]);
     renderChart();
+    renderExportScope(ok, items.length - ok.length);
     persist();
   }
 
-  function onTableInput(ev) {
-    const input = ev.target;
-    const k = input.dataset.k;
-    if (!k) return;
-    const tr = input.closest('tr');
-    const lot = lots.find(l => l.id === +tr.dataset.id);
-    if (!lot) return;
-    if (input.type === 'checkbox') lot[k] = input.checked;
-    else if (input.type === 'number' && !['rateBuy', 'rateSell'].includes(k)) lot[k] = input.value === '' ? NaN : +input.value;
-    else if (k === 'symbol') lot[k] = input.value.trim().toUpperCase();
-    else lot[k] = input.value;
-    refresh();
+  // ------------------------------------------------------------ year filter
+
+  function renderYearFilter() {
+    const years = [...new Set(lots.map(yearOf).filter(Boolean))].sort();
+    if (yearFilter !== 'all' && !years.includes(yearFilter)) yearFilter = 'all';
+    const host = $('#year-filter');
+    host.hidden = years.length < 2;
+    host.innerHTML = ['all', ...years].map(y => `<button type="button" class="chip" role="radio" aria-checked="${y === yearFilter}" data-year="${y}">${y === 'all' ? 'כל השנים' : y}</button>`).join('');
+    $('#clear-all').hidden = lots.length === 0;
   }
 
-  // ------------------------------------------------------------ rate control
+  // ------------------------------------------------------------ lots
 
-  const intradayCache = new Map(); // url -> Promise<file|null>
-  let intradayIndex = null;
+  function statusBadge(it) {
+    if (!it.calc.ok) return '<span class="badge badge-warn" title="חסרים נתונים">⚠ חסר</span>';
+    if (it.rateWarn) return '<span class="badge badge-warn" title="סטייה חריגה בין מקורות השער">⚠ שער</span>';
+    return '<span class="badge badge-ok" title="החישוב תקין והשערים תואמים">✓ תקין</span>';
+  }
 
-  function loadJson(url) {
-    if (!intradayCache.has(url)) {
-      intradayCache.set(url, fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null));
+  const ICON_EDIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  const ICON_DEL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+
+  function lotActions(it, compact) {
+    const id = it.lot.id;
+    const open = openPanels.has(id);
+    return `<button type="button" class="btn-link" data-act="explain" data-id="${id}" aria-expanded="${open}">${open ? 'סגירת ההסבר' : 'איך חושב?'}</button>
+      <span class="${compact ? 'right' : ''}">
+        <button type="button" class="icon-btn" data-act="edit" data-id="${id}" aria-label="עריכת העסקה" title="עריכה">${ICON_EDIT}</button>
+        <button type="button" class="icon-btn danger" data-act="delete" data-id="${id}" aria-label="מחיקת העסקה" title="מחיקה">${ICON_DEL}</button>
+      </span>`;
+  }
+
+  function renderLots(items) {
+    const body = $('#lots-body');
+    const cards = $('#lots-cards');
+    $('#empty-state').hidden = lots.length > 0;
+    $('#lots-hint').hidden = lots.length === 0;
+    document.querySelector('.lots-desktop').hidden = lots.length === 0;
+
+    body.innerHTML = items.map(it => {
+      const { lot, calc } = it;
+      const realCls = calc.ok ? (calc.real > 0 ? 'gain' : calc.real < 0 ? 'loss' : '') : '';
+      const row = `<tr class="lot-row" data-id="${lot.id}">
+        <td>${statusBadge(it)}</td>
+        <td><span class="sym">${esc(lot.symbol || '—')}</span><span class="plan">${esc(lot.planType || '')}</span></td>
+        <td class="num">${isFinite(lot.qty) ? lot.qty : ''}</td>
+        <td>${Core.formatDateIL(lot.dateAcquired) || '—'}</td>
+        <td>${Core.formatDateIL(lot.dateSold) || '—'}</td>
+        <td class="num">${usd(lot.proceedsUsd)}</td>
+        <td class="num">${usd(lot.costUsd)}</td>
+        <td class="num ${realCls}">${calc.ok ? fmt(calc.real) : ''}</td>
+        <td class="num">${calc.ok ? fmt(calc.tax) : ''}</td>
+        <td class="actions-cell">${lotActions(it, false)}</td>
+      </tr>`;
+      const panel = openPanels.has(lot.id) ? `<tr class="panel-row"><td colspan="10">${panelHtml(it)}</td></tr>` : '';
+      return row + panel;
+    }).join('');
+
+    cards.innerHTML = items.map(it => {
+      const { lot, calc } = it;
+      const realCls = calc.ok ? (calc.real > 0 ? 'gain' : calc.real < 0 ? 'loss' : '') : '';
+      const qty = isFinite(lot.qty) ? ` · ${lot.qty} מניות` : '';
+      const plan = lot.planType ? ` · <bdi>${esc(lot.planType)}</bdi>` : '';
+      return `<article class="lot-card ${calc.ok ? '' : 'has-issue'}" data-id="${lot.id}">
+        <div class="lc-head">
+          <div class="lc-title"><span class="sym">${esc(lot.symbol || '—')}</span><span class="plan">${plan}${qty}</span></div>
+          ${statusBadge(it)}
+        </div>
+        <div class="lc-dates">נקנו ${Core.formatDateIL(lot.dateAcquired) || '—'} · נמכרו ${Core.formatDateIL(lot.dateSold) || '—'}${lot.timeSold ? ` <bdi>${esc(lot.timeSold)}</bdi>` : ''}</div>
+        ${calc.ok ? `<div class="lc-metrics">
+          <div class="lc-metric"><div class="k">רווח ריאלי</div><div class="v ${realCls}">${ils(calc.real)}</div></div>
+          <div class="lc-metric"><div class="k">מס משוער</div><div class="v">${ils(calc.tax)}</div></div>
+        </div>` : `<ul class="lc-issues">${calc.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`}
+        <div class="lc-actions">${lotActions(it, true)}</div>
+        ${openPanels.has(lot.id) ? panelHtml(it) : ''}
+      </article>`;
+    }).join('');
+
+    // Intraday rates are loaded lazily, only for open panels.
+    for (const it of items) if (openPanels.has(it.lot.id)) fillIntraday(it);
+  }
+
+  // ------------------------------------------------------------ "how was it calculated" panel
+
+  function panelHtml(it) {
+    const { lot, calc } = it;
+    if (!calc.ok) {
+      return `<div class="panel"><h3>חסרים נתונים לחישוב</h3>
+        <ul class="lc-issues">${calc.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>
+        <div class="actions"><button type="button" class="btn btn-sm" data-act="edit" data-id="${lot.id}">השלמת הנתונים</button></div></div>`;
     }
-    return intradayCache.get(url);
+    const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
+    const rb = calc.buy.rate, rs = calc.sell.rate;
+    const cf = Core.closedFormReal(lot, rb, rs);
+    const A = Core.roundILS(cf.A);
+    const rateNote = (r, d) => (r.manual ? 'שער שהוזן ידנית' : r.date !== d ? `השער היציג מ‑${Core.formatDateIL(r.date)} (לא פורסם שער ב‑${Core.formatDateIL(d)})` : `השער היציג של ${Core.formatDateIL(d)}`);
+    const step = (what, calcStr, note, cls = '') => `<li class="${cls}"><span class="what">${what}</span><span class="calc">${calcStr}</span>${note ? `<span class="note">${note}</span>` : ''}</li>`;
+    const inflNote = calc.inflRaw <= 0
+      ? 'השקל התחזק (או לא השתנה), ולכן אין סכום אינפלציוני פטור.'
+      : calc.nominal < 0 ? 'הפסד בזמן שהשקל נחלש: כל ההפסד הנומינלי מותר.' : `פטור ממס עד גובה הרווח: ${ils(calc.inflationary)}.`;
+    const realRule = cf.A >= 0 && cf.B >= 0 ? `min(${signed(A)}, ${signed(calc.nominal)})`
+      : cf.A <= 0 && cf.B <= 0 ? `max(${signed(A)}, ${signed(calc.nominal)})` : '0 (סימנים שונים)';
+
+    return `<div class="panel">
+      <h3>החישוב</h3>
+      <ol class="steps">
+        ${step('תמורה בשקלים = תמורה $ × שער מכירה', L(`${usd(lot.proceedsUsd)} × ${rs} = ${calc.proceedsIls.toLocaleString('en-US')} ₪`), rateNote(calc.sell, lot.dateSold))}
+        ${step('עלות בשקלים = עלות $ × שער רכישה', L(`${usd(lot.costUsd)} × ${rb} = ${calc.costIls.toLocaleString('en-US')} ₪`), rateNote(calc.buy, lot.dateAcquired))}
+        ${fees ? step('הוצאות מכירה = עמלות $ × שער מכירה', L(`${usd(fees)} × ${rs} = ${calc.feesIls.toLocaleString('en-US')} ₪`)) : ''}
+        ${step('רווח נומינלי (B) = תמורה − עלות − הוצאות', L(`${calc.proceedsIls.toLocaleString('en-US')} − ${calc.costIls.toLocaleString('en-US')} − ${calc.feesIls.toLocaleString('en-US')} = ${signed(calc.nominal)} ₪`))}
+        ${step('רווח בדולרים בשער המכירה (A) = (תמורה $ − עלות $ − עמלות $) × שער מכירה', L(`(${usd(lot.proceedsUsd)} − ${usd(lot.costUsd)} − ${usd(fees)}) × ${rs} = ${signed(A)} ₪`))}
+        ${step('סכום אינפלציוני = עלות ₪ × (שער מכירה ÷ שער רכישה − 1)', L(`${calc.costIls.toLocaleString('en-US')} × (${rs} ÷ ${rb} − 1) = ${signed(calc.inflRaw)} ₪`), inflNote)}
+        ${step('רווח ריאלי = הקטן מבין A ו‑B (בהפסד: ההפסד הקטן יותר)', L(`${realRule} = ${signed(calc.real)} ₪`), '', 'result')}
+        ${calc.real > 0 ? step('מס משוער = 25% × רווח ריאלי', L(`${calc.real.toLocaleString('en-US')} × 25% = ${calc.tax.toLocaleString('en-US')} ₪`), 'המס הסופי מחושב בסיכום, אחרי קיזוז הפסדים של אותה שנה.', 'result') : ''}
+      </ol>
+      <p class="case">${esc(Core.SCENARIO_TEXT[calc.scenario] || '')}</p>
+      <h3>בקרת שערים</h3>
+      ${checksTable(it)}
+      <p class="intraday" data-intraday="${lot.id}">${lot.timeSold ? 'טוען את השער בשעת המכירה…' : 'כדי לראות את שער השוק בדקת המכירה, מוסיפים את שעת המכירה בעריכת העסקה.'}</p>
+    </div>`;
   }
 
-  /** Market rate at the sale moment: minute archive first, then hourly bars. */
+  function checksTable(it) {
+    const { lot } = it;
+    const cell = c => {
+      if (!c || !c.rate) return '<td>—</td>';
+      const dev = c.devPct === null ? '' : `<span class="dev">${c.devPct > 0 ? '+' : ''}${c.devPct.toFixed(2)}%</span>`;
+      return `<td class="${c.warn ? 'warn-cell' : ''}"><bdi class="ltr">${c.rate}</bdi>${dev}</td>`;
+    };
+    const rows = [['רכישה', lot.dateAcquired], ['מכירה', lot.dateSold]].filter(([, d]) => d).map(([label, d]) => {
+      const cc = Core.crossCheck(SOURCES, d);
+      return `<tr><th scope="row">${label} ${Core.formatDateIL(d)}</th><td><bdi class="ltr">${cc.boi ? cc.boi.rate : '—'}</bdi></td>${cell(cc.checks.ecb)}${cell(cc.checks.yahoo)}</tr>`;
+    }).join('');
+    return `<div class="table-scroll"><table class="mini-table">
+      <thead><tr><th></th><th>בנק ישראל (בטופס)</th><th>ECB</th><th>Yahoo</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <p class="hint">בסוגריים הקטנים: הסטייה מבנק ישראל. מסומן בצהוב מעל ${Core.CHECK_THRESHOLDS.ecb}% ב‑ECB או מעל ${Core.CHECK_THRESHOLDS.yahoo}% ב‑Yahoo.</p>`;
+  }
+
+  // ------------------------------------------------------------ intraday
+
+  const jsonCache = new Map();
+  const loadJson = url => {
+    if (!jsonCache.has(url)) jsonCache.set(url, fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null));
+    return jsonCache.get(url);
+  };
+
   async function intradayRate(lot) {
     const epoch = Core.nyToUtcEpoch(lot.dateSold, lot.timeSold);
     if (epoch === null) return null;
-    if (!intradayIndex) intradayIndex = (await loadJson('data/rates/intraday/index.json')) || { minute: [], hourly: [] };
-    const d = new Date(epoch * 1000);
-    const month = d.toISOString().slice(0, 7), year = month.slice(0, 4);
-    if (intradayIndex.minute.includes(month)) {
+    const idx = (await loadJson('data/rates/intraday/index.json')) || { minute: [], hourly: [] };
+    const month = new Date(epoch * 1000).toISOString().slice(0, 7), year = month.slice(0, 4);
+    if (idx.minute.includes(month)) {
       const r = Core.intradayAt(await loadJson(`data/rates/intraday/minute/${month}.json`), epoch, 5);
-      if (r) return { ...r, epoch, kind: 'דקה' };
+      if (r) return { ...r, kind: 'דקה' };
     }
-    if (intradayIndex.hourly.includes(year)) {
+    if (idx.hourly.includes(year)) {
       const r = Core.intradayAt(await loadJson(`data/rates/intraday/hourly/${year}.json`), epoch, 1);
-      if (r) return { ...r, epoch, kind: 'שעה' };
+      if (r) return { ...r, kind: 'שעה' };
     }
-    return { epoch, missing: true };
+    return { missing: true, firstMinute: idx.minute[0] };
   }
 
-  const pct = v => (v === null || v === undefined ? '' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
-  const rateCell = (c, label) => {
-    if (!c || !c.rate) return '<td>—</td>';
-    const late = c.date && c.date !== label ? `<span class="dev">מ‑${Core.formatDateIL(c.date)}</span>` : '';
-    return `<td class="num ${c.warn ? 'warn-cell' : ''}">${c.rate}<span class="dev">${pct(c.devPct)}</span>${late}</td>`;
-  };
-
-  let checksSeq = 0;
-  async function renderChecks(items) {
-    const seq = ++checksSeq;
-    const body = $('#check-body');
-    const rows = [];
-    let flagged = 0;
-    for (const [i, { lot, calc }] of items.entries()) {
-      const events = [['רכישה', lot.dateAcquired], ['מכירה', lot.dateSold]];
-      for (const [label, date] of events) {
-        if (!date) continue;
-        const cc = Core.crossCheck(SOURCES, date);
-        if (cc.warn) flagged++;
-        let intraCells = '<td></td><td></td><td></td><td></td>';
-        if (label === 'מכירה') {
-          const ir = lot.timeSold ? await intradayRate(lot) : null;
-          if (seq !== checksSeq) return; // a newer render started
-          if (!lot.timeSold) {
-            intraCells = '<td class="hint">לא הוזנה שעה</td><td></td><td></td><td></td>';
-          } else if (!ir || ir.missing) {
-            intraCells = `<td>${esc(lot.timeSold)}</td><td colspan="3" class="hint">אין נתוני שעה/דקה לזמן הזה (ארכיון הדקות מתחיל ב‑${esc((intradayIndex && intradayIndex.minute[0]) || '?')}, נתוני שעה כשנתיים אחורה)</td>`;
-          } else {
-            const boi = cc.boi && cc.boi.rate;
-            const diff = boi ? ((ir.rate / boi - 1) * 100) : null;
-            const effect = boi && isFinite(lot.proceedsUsd) ? Core.roundILS(lot.proceedsUsd * (ir.rate - boi)) : null;
-            const utc = new Date(ir.ts * 1000).toISOString().slice(11, 16);
-            intraCells = `<td>${esc(lot.timeSold)}</td>
-              <td class="num">${ir.rate.toFixed(4)}<span class="dev">דיוק: ${ir.kind}${ir.exact ? '' : ' (הקרוב)'} · נכון ל‑<bdi dir="ltr">${utc} UTC</bdi></span></td>
-              <td class="num">${pct(diff)}</td><td class="num">${effect === null ? '' : fmt(effect)}</td>`;
-          }
-        }
-        rows.push(`<tr class="${label === 'רכישה' ? 'sep' : ''}">
-          <td>${label === 'רכישה' ? i + 1 : ''}</td><td>${label === 'רכישה' ? esc(lot.symbol) : ''}</td><td>${label}</td>
-          <td>${Core.formatDateIL(date)}</td>
-          <td class="num">${cc.boi ? cc.boi.rate : '—'}${cc.boi && cc.boi.date !== date ? `<span class="dev">מ‑${Core.formatDateIL(cc.boi.date)}</span>` : ''}</td>
-          ${rateCell(cc.checks.ecb, cc.boi && cc.boi.date)}${rateCell(cc.checks.yahoo, cc.boi && cc.boi.date)}
-          ${intraCells}</tr>`);
+  async function fillIntraday(it) {
+    const { lot, calc } = it;
+    if (!lot.timeSold || !calc.ok) return;
+    const ir = await intradayRate(lot);
+    for (const el of document.querySelectorAll(`[data-intraday="${lot.id}"]`)) {
+      if (!ir || ir.missing) {
+        el.textContent = `אין נתוני דקה או שעה לשעה ${lot.timeSold} בתאריך הזה (ארכיון הדקות מתחיל ב‑${ir && ir.firstMinute ? ir.firstMinute : '?'}, נתוני שעה כשנתיים אחורה).`;
+        continue;
       }
+      const diff = (ir.rate / calc.sell.rate - 1) * 100;
+      const effect = Core.roundILS(lot.proceedsUsd * (ir.rate - calc.sell.rate));
+      const utc = new Date(ir.ts * 1000).toISOString().slice(11, 16);
+      el.innerHTML = `שער השוק בשעת המכירה (${esc(lot.timeSold)} שעון ניו יורק, דיוק של ${ir.kind}, נכון ל‑<bdi class="ltr">${utc} UTC</bdi>): <b><bdi class="ltr">${ir.rate.toFixed(4)}</bdi></b>.
+        הפרש מהשער היציג: <bdi class="ltr">${diff > 0 ? '+' : ''}${diff.toFixed(2)}%</bdi>, כלומר <bdi class="ltr">${signed(effect)} ₪</bdi> בתמורה. לבקרה בלבד, בטופס נשאר השער היציג.`;
     }
-    if (seq !== checksSeq) return;
-    body.innerHTML = rows.join('') || '<tr><td colspan="11" class="hint">אין עסקאות לבדיקה.</td></tr>';
-    const ecbMeta = SECONDARY.ecb, yMeta = SECONDARY.yahoo;
-    $('#check-meta').textContent = [
-      flagged ? `⚠ ${flagged} תאריכים עם סטייה חריגה (ECB מעל ${Core.CHECK_THRESHOLDS.ecb}%, Yahoo מעל ${Core.CHECK_THRESHOLDS.yahoo}%). כדאי לבדוק את השער מול אתר בנק ישראל.` : 'כל השערים תואמים בין המקורות.',
-      ecbMeta ? `ECB: עד ${Core.formatDateIL(ecbMeta.last)}.` : 'נתוני ECB לא נטענו.',
-      yMeta ? `Yahoo: עד ${Core.formatDateIL(yMeta.last)}.` : 'נתוני Yahoo לא נטענו.',
-      'הסטייה מחושבת ביחס לשער היציג.',
-    ].join(' ');
+  }
+
+  // ------------------------------------------------------------ hero + sticky
+
+  function dueDate(key) {
+    const [y, h] = key.split('-H');
+    return h === '1' ? `${y}-07-31` : `${+y + 1}-01-31`;
+  }
+
+  function renderHero(ok, groups) {
+    const hero = $('#hero');
+    const sticky = $('#sticky');
+    const show = ok.length > 0;
+    hero.hidden = !show;
+    sticky.hidden = !show;
+    document.body.classList.toggle('has-sticky', show);
+    if (!show) return;
+    const years = groups.filter(g => g.isYear);
+    const halves = groups.filter(g => !g.isYear);
+    const net = years.reduce((a, g) => a + g.net, 0);
+    const tax = years.reduce((a, g) => a + g.tax, 0);
+    const scope = yearFilter === 'all' ? (years.length > 1 ? `${years.length} שנות מס` : `שנת ${years[0].key}`) : `שנת ${yearFilter}`;
+
+    const netEl = $('#t-net');
+    netEl.textContent = ils(net);
+    netEl.className = `tile-value ${net > 0 ? 'gain' : net < 0 ? 'loss' : ''}`;
+    $('#t-net-sub').textContent = `${scope}, אחרי קיזוז הפסדים`;
+    $('#t-tax').textContent = ils(tax);
+    $('#t-tax-sub').textContent = years.some(g => g.carryLoss < 0) ? 'יש הפסד להעברה לשנה הבאה' : 'לפני מס יסף, אם חל';
+
+    const upcoming = halves.map(g => ({ g, due: dueDate(g.key) })).filter(x => x.due >= today()).sort((a, b) => a.due.localeCompare(b.due))[0];
+    if (upcoming) {
+      $('#t-due').textContent = ils(upcoming.g.tax);
+      $('#t-due-sub').textContent = `עד ${Core.formatDateIL(upcoming.due)} · ${upcoming.g.label}`;
+    } else {
+      $('#t-due').textContent = '—';
+      $('#t-due-sub').textContent = 'מועדי המקדמה של המכירות האלה כבר עברו';
+    }
+    $('#t-count').textContent = String(ok.length);
+    const bad = visibleItems().length - ok.length;
+    $('#t-count-sub').textContent = bad ? `ועוד ${bad} שצריך להשלים` : 'כל העסקאות תקינות';
+
+    $('#s-net').textContent = ils(net);
+    $('#s-tax').textContent = ils(tax);
   }
 
   // ------------------------------------------------------------ summary
 
-  function dueDate(key) {
-    const [y, h] = key.split('-H');
-    return h === '1' ? `31.7.${y}` : `31.1.${+y + 1}`;
-  }
-
-  function renderSummary(items) {
+  function renderSummary(groups) {
     const host = $('#summary');
-    const groups = Core.summarize(items);
-    if (!groups.length) { host.innerHTML = '<p class="hint">הסיכום יופיע אחרי שתוזן לפחות עסקה אחת תקינה.</p>'; return; }
+    if (!groups.length) { host.innerHTML = '<p class="hint">הסיכום יופיע אחרי שתהיה לפחות עסקה אחת תקינה.</p>'; return; }
     host.innerHTML = groups.map(g => `
       <div class="sum-card ${g.isYear ? 'year' : ''}">
         <h3>${esc(g.label)}</h3>
         <dl>
-          <dt>מספר מכירות (lots)</dt><dd>${g.count}</dd>
+          <dt>מכירות</dt><dd>${g.count}</dd>
           <dt>תמורה ₪</dt><dd>${fmt(g.proceedsIls)}</dd>
           <dt>רווחים ריאליים ₪</dt><dd>${fmt(g.gains)}</dd>
           <dt>הפסדים לקיזוז ₪</dt><dd>${fmt(g.losses)}</dd>
           <dt>רווח ריאלי נטו ₪</dt><dd>${fmt(g.net)}</dd>
           <dt>מס משוער 25% ₪</dt><dd class="big">${fmt(g.tax)}</dd>
         </dl>
-        ${g.isYear ? (g.carryLoss < 0 ? `<div class="due">הפסד להעברה לשנה הבאה: ${fmt(g.carryLoss)} ₪</div>` : '') : `<div class="due">מקדמה בדוח חצי‑שנתי עד ${dueDate(g.key)}</div>`}
+        ${g.isYear ? (g.carryLoss < 0 ? `<div class="due">הפסד להעברה לשנה הבאה: ${ils(g.carryLoss)}</div>` : '') : `<div class="due">מקדמה בדוח חצי‑שנתי עד ${Core.formatDateIL(dueDate(g.key))}</div>`}
       </div>`).join('');
+  }
+
+  // ------------------------------------------------------------ general explanation
+
+  function renderExplainAll(example) {
+    const ex = example && example.calc.ok ? example : null;
+    let sub = '';
+    if (ex) {
+      const { lot, calc } = ex;
+      const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
+      const rb = calc.buy.rate, rs = calc.sell.rate;
+      const A = Core.roundILS(Core.closedFormReal(lot, rb, rs).A);
+      sub = `<h3>הצבה במספרים שלך (${esc(lot.symbol || 'עסקה')} ${esc(lot.planType || '')}, נמכרה ${Core.formatDateIL(lot.dateSold)})</h3>
+        <div class="formula">
+          <span><var>P</var> = ${L(usd(lot.proceedsUsd))} $, <var>C</var> = ${L(usd(lot.costUsd))} $, <var>F</var> = ${L(usd(fees))} $, <var>R<sub>b</sub></var> = ${L(rb)}, <var>R<sub>s</sub></var> = ${L(rs)}</span>
+          <span>A = ${L(`(${usd(lot.proceedsUsd)} − ${usd(lot.costUsd)} − ${usd(fees)}) × ${rs} = ${signed(A)}`)}</span>
+          <span>B = ${L(`${usd(lot.proceedsUsd)} × ${rs} − ${usd(lot.costUsd)} × ${rb} − ${usd(fees)} × ${rs} = ${signed(calc.nominal)}`)}</span>
+          <span>רווח ריאלי = ${L(`${signed(calc.real)} ₪`)} · מס = ${L(`${fmt(calc.tax)} ₪`)}</span>
+        </div>
+        <p>${esc(Core.SCENARIO_TEXT[calc.scenario] || '')} את החישוב המלא של כל עסקה רואים בלחיצה על "איך חושב?" ליד העסקה.</p>`;
+    }
+    $('#explain-body').innerHTML = `
+      <h3>הפרמטרים של כל מכירה (lot)</h3>
+      <dl class="params">
+        <dt>P</dt><dd>התמורה בדולרים (Total Proceeds ב‑E*Trade)</dd>
+        <dt>C</dt><dd>העלות בדולרים (Adjusted Cost Basis: השווי ביום הרכישה או ההבשלה)</dd>
+        <dt>F</dt><dd>עמלות מכירה בדולרים, אם לא נוכו כבר מהתמורה</dd>
+        <dt>R<sub>b</sub></dt><dd>השער היציג של בנק ישראל ביום הרכישה</dd>
+        <dt>R<sub>s</sub></dt><dd>השער היציג של בנק ישראל ביום המכירה</dd>
+      </dl>
+      <h3>שלב 1: המרה לשקלים ורווח נומינלי</h3>
+      <div class="formula">
+        <span>תמורה ₪ = ${L('P × Rs')} · עלות ₪ = ${L('C × Rb')} · הוצאות ₪ = ${L('F × Rs')}</span>
+        <span>רווח נומינלי: ${L('B = P×Rs − C×Rb − F×Rs')}</span>
+      </div>
+      <h3>שלב 2: הסכום האינפלציוני (השער כ"מדד")</h3>
+      <p>ליחיד שקנה נייר ערך בדולרים, שער הדולר משמש כמדד. החלק של הרווח שנובע רק מעליית הדולר פטור ממס:</p>
+      <div class="formula"><span>סכום אינפלציוני = ${L('C×Rb × (Rs ÷ Rb − 1) = C × (Rs − Rb)')}</span></div>
+      <p>כשהשקל נחלש (<bdi class="ltr">Rs &gt; Rb</bdi>) הסכום חיובי ופטור. כשהשקל התחזק הוא שלילי: ברווח הוא נחשב 0, ובהפסד מנטרלים אותו (הלכת מוזס).</p>
+      <h3>שלב 3: רווח ריאלי בנוסחה אחת</h3>
+      <div class="formula">
+        <span>${L('A = (P − C − F) × Rs')}: הרווח בדולרים, מומר בשער המכירה</span>
+        <span>${L('B = P×Rs − C×Rb − F×Rs')}: הרווח הנומינלי בשקלים</span>
+        <span>רווח ריאלי = ${L('min(A, B)')} אם שניהם רווח · ${L('max(A, B)')} אם שניהם הפסד · 0 אם הסימנים שונים</span>
+      </div>
+      <p>במילים: לוקחים את התוצאה הקטנה יותר בערך מוחלט. כך מקבלים בדיוק את ארבע הדוגמאות שבחוזר מס הכנסה 10/2025.</p>
+      <h3>שלב 4: מס רווח הון</h3>
+      <div class="formula"><span>מס = ${L('25% × max(0, Σ real gains − Σ allowed losses)')}</span></div>
+      <ul>
+        <li>מקזזים הפסדים מול רווחים של אותה שנה. בחצי השנה מחשבים את המקדמה (עד 31.7 ועד 31.1). הפסד שנשאר עובר לשנים הבאות.</li>
+        <li>מס רווח הון הוא בשיעור קבוע של 25% (30% לבעל מניות מהותי), לא לפי מדרגות.</li>
+        <li>מס יסף: 3% על הכנסה חייבת מעל ‏721,560 ₪ בשנה, ועוד 2% על הכנסה הונית מעל הסף (מ‑2025). הכלי לא מחשב אותו.</li>
+      </ul>
+      <h3>מה ההבדל בין מס שולי למס רווח הון?</h3>
+      <ul>
+        <li><b>ההטבה מהמעסיק היא הכנסת עבודה, במס שולי</b> לפי המדרגות (10% עד 47%, ועוד מס יסף). ב‑ESPP: ההנחה, כלומר (השווי ביום הרכישה פחות המחיר ששילמת) × כמות. ב‑RSU: השווי ביום ההבשלה. המס הזה משולם דרך המשכורת.</li>
+        <li><b>מה שקרה למניה אחרי זה הוא רווח הון, ב‑25%.</b> לכן העלות בחישוב היא השווי ביום הרכישה או ההבשלה (Adjusted Cost Basis), ולא המחיר ששילמת. אחרת ההנחה הייתה ממוסה פעמיים.</li>
+        <li><b>במסלול 102 רווח הון עם נאמן</b> החלוקה שונה: החלק עד ממוצע 30 ימי המסחר שלפני ההענקה הוא הכנסת עבודה (מס שולי), והיתרה רווח הון ב‑25%. הנאמן מנכה את המס במכירה. כדאי לוודא עם רואה החשבון איזו עלות נכונה במקרה שלך.</li>
+      </ul>
+      ${sub}`;
   }
 
   // ------------------------------------------------------------ chart
@@ -266,6 +405,7 @@
   function renderChart() {
     const markers = [];
     for (const l of lots) {
+      if (yearFilter !== 'all' && yearOf(l) !== yearFilter) continue;
       const name = `${esc(l.symbol || '')} ${esc(l.planType || '')}`.trim();
       if (l.dateAcquired) markers.push({ date: l.dateAcquired, type: 'buy', label: `רכישה: ${name}` });
       if (l.dateSold) markers.push({ date: l.dateSold, type: 'sell', label: `מכירה: ${name}` });
@@ -273,19 +413,137 @@
     window.RateChart.renderRateChart($('#chart'), RATES, markers, $('#tooltip'));
     const meta = window.USD_ILS_RATES;
     $('#rates-meta').textContent = meta
-      ? `מקור: בנק ישראל, שער יציג (סדרה RER_USD_ILS). ${meta.count} ימי פרסום, מ‑${Core.formatDateIL(meta.first)} עד ${Core.formatDateIL(meta.last)}.`
+      ? `מקור: בנק ישראל, שער יציג. ${meta.count} ימי פרסום, עד ${Core.formatDateIL(meta.last)}. השערים מתעדכנים פעם בשבוע.`
       : 'קובץ השערים לא נטען.';
+  }
+
+  // ------------------------------------------------------------ edit drawer
+
+  const dlg = $('#lot-dialog');
+  const form = $('#lot-form');
+  let editingId = null;
+  const F = name => form.elements[name];
+
+  function openEditor(id) {
+    const lot = id ? lots.find(l => l.id === id) : blankLot();
+    editingId = id || null;
+    $('#lot-dialog-title').textContent = id ? 'עריכת עסקה' : 'עסקה חדשה';
+    for (const k of ['symbol', 'planType', 'dateAcquired', 'dateSold', 'timeSold', 'rateBuy', 'rateSell']) F(k).value = lot[k] ?? '';
+    for (const k of ['qty', 'proceedsUsd', 'costUsd', 'feesUsd']) F(k).value = isFinite(lot[k]) ? lot[k] : '';
+    F('sec102').checked = sec102Of(lot);
+    $('#f-paste').value = '';
+    $('#f-paste-note').textContent = '';
+    for (const el of form.querySelectorAll('[aria-invalid]')) el.removeAttribute('aria-invalid');
+    for (const el of form.querySelectorAll('.field-error')) el.textContent = '';
+    updateRatePlaceholders();
+    form.querySelector('.advanced').open = !!(lot.rateBuy || lot.rateSell);
+    dlg.showModal();
+    setTimeout(() => (id ? F('dateSold') : F('symbol')).focus(), 30);
+  }
+
+  function updateRatePlaceholders() {
+    const b = Core.lookupRate(RATES, F('dateAcquired').value);
+    const s = Core.lookupRate(RATES, F('dateSold').value);
+    F('rateBuy').placeholder = b ? `יציג: ${b.rate}` : 'אין שער יציג';
+    F('rateSell').placeholder = s ? `יציג: ${s.rate}` : 'אין שער יציג';
+  }
+
+  const FIELD_RULES = {
+    dateAcquired: v => (!v ? 'צריך תאריך רכישה' : null),
+    dateSold: v => (!v ? 'צריך תאריך מכירה' : F('dateAcquired').value && v < F('dateAcquired').value ? 'תאריך המכירה מוקדם מתאריך הרכישה' : null),
+    proceedsUsd: v => (v === '' ? 'צריך את התמורה בדולרים' : +v < 0 ? 'התמורה לא יכולה להיות שלילית' : null),
+    costUsd: v => (v === '' ? 'צריך את העלות בדולרים' : +v < 0 ? 'העלות לא יכולה להיות שלילית' : null),
+  };
+
+  function validateField(name) {
+    const el = F(name);
+    const err = FIELD_RULES[name](el.value.trim());
+    el.setAttribute('aria-invalid', err ? 'true' : 'false');
+    const out = document.getElementById(`e-${name}`);
+    if (out) out.textContent = err || '';
+    return !err;
+  }
+
+  function saveEditor(ev) {
+    ev.preventDefault();
+    const results = Object.keys(FIELD_RULES).map(validateField);
+    if (results.includes(false)) {
+      const first = form.querySelector('[aria-invalid="true"]');
+      if (first) first.focus();
+      return;
+    }
+    const num = k => (F(k).value === '' ? NaN : +F(k).value);
+    const data = {
+      symbol: F('symbol').value.trim().toUpperCase(), planType: F('planType').value, qty: num('qty'),
+      dateAcquired: F('dateAcquired').value, dateSold: F('dateSold').value, timeSold: F('timeSold').value,
+      proceedsUsd: num('proceedsUsd'), costUsd: num('costUsd'), feesUsd: isFinite(num('feesUsd')) ? num('feesUsd') : 0,
+      sec102: F('sec102').checked === !!profile.sec102 ? null : F('sec102').checked,
+      rateBuy: F('rateBuy').value, rateSell: F('rateSell').value,
+    };
+    if (editingId) Object.assign(lots.find(l => l.id === editingId), data);
+    else lots.push({ ...blankLot(), ...data });
+    dlg.close();
+    render();
+    toast(editingId ? 'העסקה עודכנה' : 'העסקה נוספה');
+  }
+
+  function bindEditor() {
+    form.addEventListener('submit', saveEditor);
+    for (const name of Object.keys(FIELD_RULES)) {
+      const el = F(name);
+      el.addEventListener('blur', () => { if (el.value !== '' || el.getAttribute('aria-invalid')) validateField(name); });
+      el.addEventListener('input', () => { if (el.getAttribute('aria-invalid') === 'true') validateField(name); });
+    }
+    F('dateAcquired').addEventListener('change', updateRatePlaceholders);
+    F('dateSold').addEventListener('change', updateRatePlaceholders);
+    F('symbol').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
+    $('#f-paste').addEventListener('input', e => {
+      const { date, time } = Core.parseOrderText(e.target.value);
+      const parts = [];
+      if (date) { F('dateSold').value = date; parts.push(`תאריך ${Core.formatDateIL(date)}`); validateField('dateSold'); updateRatePlaceholders(); }
+      if (time) { F('timeSold').value = time; parts.push(`שעה ${time}`); }
+      $('#f-paste-note').textContent = parts.length ? `זוהו: ${parts.join(', ')}` : e.target.value ? 'לא זוהו תאריך או שעה בטקסט' : '';
+    });
+    for (const d of [dlg, $('#preview-dialog')]) {
+      d.addEventListener('click', e => {
+        if (e.target.closest('[data-close]') || e.target === d) d.close();
+      });
+    }
+  }
+
+  // ------------------------------------------------------------ lot actions
+
+  function deleteLot(id) {
+    const idx = lots.findIndex(l => l.id === id);
+    if (idx === -1) return;
+    const [removed] = lots.splice(idx, 1);
+    openPanels.delete(id);
+    render();
+    toast(`העסקה ${removed.symbol || ''} נמחקה`.replace('  ', ' '), { label: 'ביטול', run: () => { lots.splice(idx, 0, removed); render(); } });
+  }
+
+  function onListClick(ev) {
+    const btn = ev.target.closest('[data-act]');
+    if (!btn) return;
+    const id = +btn.dataset.id;
+    const act = btn.dataset.act;
+    if (act === 'edit') openEditor(id);
+    else if (act === 'delete') deleteLot(id);
+    else if (act === 'explain') {
+      if (openPanels.has(id)) openPanels.delete(id); else openPanels.add(id);
+      render();
+      const again = [...document.querySelectorAll(`[data-act="explain"][data-id="${id}"]`)].find(el => el.offsetParent);
+      if (again) again.focus();
+    }
   }
 
   // ------------------------------------------------------------ import
 
   function setMsg(el, text, kind) { el.className = `msg ${kind || ''}`; el.textContent = text; }
 
-  async function onFile(ev) {
-    const file = ev.target.files[0];
-    ev.target.value = '';
-    if (!file) return;
+  async function importFile(file) {
     const msg = $('#import-msg');
+    if (!file) return;
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -296,18 +554,67 @@
         if (res.lots.length > best.lots.length) best = res;
       }
       if (!best.lots.length) { setMsg(msg, `לא יובאו עסקאות. ${best.warnings.join(' · ')}`, 'err'); return; }
-      const added = best.lots.map(l => ({ ...blankLot(), ...l, sec102: null }));
-      lots = lots.concat(added).sort((a, b) => (a.dateSold || '').localeCompare(b.dateSold || '') || (a.dateAcquired || '').localeCompare(b.dateAcquired || ''));
-      renderTable();
+      const before = lots.length;
+      lots = lots.concat(best.lots.map(l => ({ ...blankLot(), ...l, sec102: null })));
+      yearFilter = 'all';
+      render();
       const extra = best.warnings.length ? ` שים לב: ${best.warnings.join(' · ')}` : '';
-      setMsg(msg, `יובאו ${added.length} שורות מכירה מהקובץ ${file.name}.${extra}`, best.warnings.length ? 'warn' : 'ok');
+      setMsg(msg, `יובאו ${lots.length - before} מכירות מהקובץ ${file.name}.${extra}`, best.warnings.length ? 'warn' : 'ok');
+      $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
       console.error(e);
-      setMsg(msg, `לא הצלחנו לקרוא את הקובץ: ${e.message}`, 'err');
+      setMsg(msg, `לא הצלחנו לקרוא את הקובץ (${e.message}). ודא שזה קובץ Excel או CSV שירד מ‑E*Trade.`, 'err');
     }
   }
 
+  function bindDropzone() {
+    const dz = $('#dropzone');
+    $('#file').addEventListener('change', e => { importFile(e.target.files[0]); e.target.value = ''; });
+    ['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave', 'drop'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', e => importFile(e.dataTransfer.files[0]));
+    // Allow dropping anywhere on the page.
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => { if (!dz.contains(e.target)) { e.preventDefault(); importFile(e.dataTransfer.files[0]); } });
+  }
+
+  // ------------------------------------------------------------ profile
+
+  function validateId(showEmpty) {
+    const input = $('#p-id');
+    const v = input.value.trim();
+    let err = '';
+    if (v && !/^\d+$/.test(v)) err = 'מספר זהות מכיל ספרות בלבד';
+    else if (v && !Core.isValidIsraeliId(v)) err = 'מספר הזהות לא תקין (ספרת הביקורת לא מתאימה). בדוק שהקלדת את כל 9 הספרות.';
+    else if (!v && showEmpty) err = 'מומלץ למלא מספר זהות. הוא נכתב בשדה "מספר תיק" בטופס.';
+    input.setAttribute('aria-invalid', err && v ? 'true' : 'false');
+    $('#p-id-err').textContent = err;
+    return !v || !err;
+  }
+
+  function bindProfile() {
+    const fields = { 'p-name': 'name', 'p-id': 'idNumber', 'p-belonging': 'belonging', 'p-place': 'place', 'p-date': 'signDate' };
+    for (const [id, key] of Object.entries(fields)) {
+      const input = document.getElementById(id);
+      input.value = profile[key] || (key === 'signDate' ? today() : '');
+      input.addEventListener('input', () => { profile[key] = input.value.trim(); persist(); if (id === 'p-id' && input.getAttribute('aria-invalid') === 'true') validateId(false); });
+    }
+    $('#p-id').addEventListener('blur', () => validateId(false));
+    const cb = $('#p-102');
+    cb.checked = !!profile.sec102;
+    cb.addEventListener('change', () => { profile.sec102 = cb.checked; persist(); });
+  }
+
   // ------------------------------------------------------------ export
+
+  const formsText = n => (n === 1 ? 'טופס 1399 אחד' : `${n} טפסי 1399`);
+
+  function renderExportScope(ok, bad) {
+    const scope = yearFilter === 'all' ? 'כל העסקאות' : `העסקאות של ${yearFilter}`;
+    $('#export-scope').textContent = ok.length
+      ? `ההורדה תכלול את ${scope}: ${formsText(ok.length)} ודף סיכום.${bad ? ` ${bad === 1 ? 'עסקה אחת' : `${bad} עסקאות`} עם נתונים חסרים לא ${bad === 1 ? 'תיכלל' : 'ייכללו'}.` : ''}`
+      : 'אין עדיין עסקאות תקינות להורדה.';
+  }
 
   async function fetchBytes(url) {
     const res = await fetch(url);
@@ -325,45 +632,100 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
-  function readyItems() {
-    const items = computeAll();
-    const ok = items.filter(it => it.calc.ok);
-    return { items, ok, bad: items.length - ok.length };
+  function exportReady() {
+    const ok = visibleItems().filter(it => it.calc.ok);
+    const msg = $('#export-msg');
+    if (!ok.length) { setMsg(msg, 'אין עסקאות תקינות להורדה. השלם את העסקאות המסומנות ב‑⚠.', 'err'); return null; }
+    if (!validateId(false)) {
+      $('#export').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('#p-id').focus();
+      setMsg(msg, 'יש לתקן את מספר הזהות לפני ההורדה.', 'err');
+      return null;
+    }
+    return ok;
+  }
+
+  async function buildPdfBytes(ok) {
+    const [formBytes, fontBytes] = await Promise.all([fetchBytes(FORM_URL), fetchBytes(FONT_URL)]);
+    const items = ok.map(it => ({ lot: { ...it.lot, sec102: sec102Of(it.lot) }, calc: it.calc }));
+    return window.Pdf1399.buildPdf({ formBytes, fontBytes, profile: { ...profile, signDate: profile.signDate || today() }, items });
+  }
+
+  const fileYear = ok => (yearFilter !== 'all' ? yearFilter : [...new Set(ok.map(it => yearOf(it.lot)))].join('-'));
+
+  async function withBusy(btns, fn) {
+    btns.forEach(b => { b.disabled = true; });
+    try { return await fn(); } finally { btns.forEach(b => { b.disabled = false; }); }
   }
 
   async function onPdf() {
+    const ok = exportReady();
+    if (!ok) return;
     const msg = $('#export-msg');
-    const { ok, bad } = readyItems();
-    if (!ok.length) { setMsg(msg, 'אין עסקאות תקינות להורדה. השלם את השדות החסרים בטבלה.', 'err'); return; }
-    const btn = $('#dl-pdf');
-    btn.disabled = true;
-    setMsg(msg, 'מכין את ה‑PDF...', '');
+    await withBusy([$('#dl-pdf'), $('#s-dl'), $('#preview-dl')], async () => {
+      try {
+        setMsg(msg, 'מכין את ה‑PDF…', '');
+        const bytes = await buildPdfBytes(ok);
+        download(bytes, `form-1399-${fileYear(ok)}.pdf`, 'application/pdf');
+        setMsg(msg, `ירד PDF עם ${formsText(ok.length)} ודף סיכום.`, 'ok');
+        if (!profile.idNumber) toast('הטופס ירד בלי מספר זהות. אפשר למלא אותו בשלב 4.');
+      } catch (e) {
+        console.error(e);
+        const hint = location.protocol === 'file:' ? ' הדף נפתח ישירות מהדיסק. צריך לפתוח אותו דרך הקישור לאתר או דרך שרת מקומי.' : '';
+        setMsg(msg, `יצירת ה‑PDF נכשלה: ${e.message}.${hint}`, 'err');
+      }
+    });
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = () => reject(new Error(`load ${src}`));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function onPreview() {
+    const ok = exportReady();
+    if (!ok) return;
+    const pd = $('#preview-dialog');
+    const pages = $('#preview-pages');
+    pages.innerHTML = '<p class="loading">מכין תצוגה מקדימה…</p>';
+    pd.showModal();
     try {
-      const [formBytes, fontBytes] = await Promise.all([
-        fetchBytes('assets/forms/form-1399y-2025-blank.pdf'),
-        fetchBytes('assets/fonts/NotoSansHebrew_400Regular.ttf'),
-      ]);
-      const items = ok.map(it => ({ lot: { ...it.lot, sec102: it.lot.sec102 ?? profile.sec102 }, calc: it.calc }));
-      const bytes = await window.Pdf1399.buildPdf({ formBytes, fontBytes, profile: { ...profile, signDate: profile.signDate || today() }, items });
-      const year = ok[0].lot.dateSold.slice(0, 4);
-      download(bytes, `form-1399-${year}.pdf`, 'application/pdf');
-      setMsg(msg, `נוצר PDF עם ${ok.length} טפסים ודף סיכום.${bad ? ` ${bad} שורות עם שגיאות לא נכללו.` : ''}`, bad ? 'warn' : 'ok');
+      const bytes = await buildPdfBytes(ok);
+      if (!window.pdfjsLib) {
+        await loadScript('vendor/pdfjs/pdf.min.js');
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
+      }
+      // disableFontFace: the form's embedded Hebrew CID fonts render garbled through
+      // the browser's FontFace path; drawing glyphs as paths renders them correctly.
+      const doc = await window.pdfjsLib.getDocument({ data: bytes, disableFontFace: true }).promise;
+      pages.innerHTML = '';
+      const width = Math.min(pages.clientWidth - 32, 820);
+      for (let n = 1; n <= doc.numPages; n++) {
+        const page = await doc.getPage(n);
+        const base = page.getViewport({ scale: 1 });
+        const scale = (width / base.width) * Math.min(window.devicePixelRatio || 1, 2);
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        canvas.setAttribute('aria-label', `עמוד ${n} מתוך ${doc.numPages}`);
+        pages.appendChild(canvas);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      }
     } catch (e) {
       console.error(e);
-      const hint = location.protocol === 'file:' ? ' הדף נפתח ישירות מהדיסק, והדפדפן חוסם טעינת קבצים. צריך לפתוח אותו דרך GitHub Pages או שרת מקומי (python3 -m http.server).' : '';
-      setMsg(msg, `יצירת ה‑PDF נכשלה: ${e.message}.${hint}`, 'err');
-    } finally {
-      btn.disabled = false;
+      pages.innerHTML = `<p class="loading">התצוגה המקדימה נכשלה (${esc(e.message)}). אפשר עדיין להוריד את הקובץ.</p>`;
     }
   }
 
   function onXlsx() {
-    const msg = $('#export-msg');
-    const { ok } = readyItems();
-    if (!ok.length) { setMsg(msg, 'אין עסקאות תקינות להורדה.', 'err'); return; }
+    const ok = exportReady();
+    if (!ok) return;
     const rows = ok.map(({ lot, calc }, i) => ({
       '#': i + 1, 'נייר': lot.symbol, 'תוכנית': lot.planType, 'כמות': lot.qty,
-      'תאריך רכישה': Core.formatDateIL(lot.dateAcquired), 'תאריך מכירה': Core.formatDateIL(lot.dateSold),
+      'תאריך רכישה': Core.formatDateIL(lot.dateAcquired), 'תאריך מכירה': Core.formatDateIL(lot.dateSold), 'שעת מכירה (ניו יורק)': lot.timeSold || '',
       'שער רכישה': calc.buy.rate, 'שער מכירה': calc.sell.rate,
       'תמורה $': lot.proceedsUsd, 'עלות $': lot.costUsd, 'עמלות $': lot.feesUsd || 0,
       'תמורה ₪': calc.proceedsIls, 'עלות ₪': calc.costIls, 'עמלות ₪': calc.feesIls,
@@ -373,9 +735,6 @@
       'תקופה': g.label, 'מכירות': g.count, 'תמורה ₪': g.proceedsIls, 'רווחים ריאליים ₪': g.gains,
       'הפסדים לקיזוז ₪': g.losses, 'רווח ריאלי נטו ₪': g.net, 'מס משוער 25% ₪': g.tax,
     }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'עסקאות');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sums), 'סיכום');
     const checks = [];
     for (const { lot } of ok) {
       for (const [label, date] of [['רכישה', lot.dateAcquired], ['מכירה', lot.dateSold]]) {
@@ -384,46 +743,54 @@
           'נייר': lot.symbol, 'אירוע': label, 'תאריך': Core.formatDateIL(date),
           'בנק ישראל': cc.boi ? cc.boi.rate : '', 'ECB': cc.checks.ecb.rate ?? '', 'סטייה ECB %': cc.checks.ecb.devPct ?? '',
           'Yahoo': cc.checks.yahoo.rate ?? '', 'סטייה Yahoo %': cc.checks.yahoo.devPct ?? '',
-          'שעת מכירה (ניו יורק)': label === 'מכירה' ? (lot.timeSold || '') : '',
         });
       }
     }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'עסקאות');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sums), 'סיכום');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(checks), 'בקרת שערים');
     wb.Workbook = { Views: [{ RTL: true }] };
-    XLSX.writeFile(wb, `capital-gains-${ok[0].lot.dateSold.slice(0, 4)}.xlsx`);
-    setMsg(msg, 'קובץ ה‑Excel ירד.', 'ok');
+    XLSX.writeFile(wb, `capital-gains-${fileYear(ok)}.xlsx`);
+    setMsg($('#export-msg'), 'קובץ ה‑Excel ירד.', 'ok');
   }
 
   // ------------------------------------------------------------ init
 
   function init() {
     bindProfile();
-    const body = $('#tx-body');
-    body.addEventListener('input', onTableInput);
-    body.addEventListener('change', onTableInput);
-    body.addEventListener('click', ev => {
-      const btn = ev.target.closest('[data-del]');
-      if (!btn) return;
-      const id = +btn.closest('tr').dataset.id;
-      lots = lots.filter(l => l.id !== id);
-      renderTable();
+    bindEditor();
+    bindDropzone();
+    $('#lots-body').addEventListener('click', onListClick);
+    $('#lots-cards').addEventListener('click', onListClick);
+    $('#year-filter').addEventListener('click', e => {
+      const chip = e.target.closest('[data-year]');
+      if (!chip) return;
+      yearFilter = chip.dataset.year;
+      render();
     });
-    $('#file').addEventListener('change', onFile);
-    $('#add-row').addEventListener('click', () => { lots.push(blankLot()); renderTable(); });
+    $('#add-row').addEventListener('click', () => openEditor(null));
     $('#load-example').addEventListener('click', () => {
       lots = lots.concat(EXAMPLE.map(l => ({ ...blankLot(), ...l })));
-      renderTable();
+      render();
       setMsg($('#import-msg'), 'נטענה דוגמה: מכירת 17 מניות QCOM מתוכנית ESPP.', 'ok');
     });
     $('#clear-all').addEventListener('click', () => {
       if (!lots.length) return;
-      if (!confirm(`למחוק את כל ${lots.length} העסקאות מהטבלה?`)) return;
+      const backup = lots.slice();
       lots = [];
-      renderTable();
+      openPanels.clear();
+      render();
+      toast(`נמחקו ${backup.length} עסקאות`, { label: 'ביטול', run: () => { lots = backup; render(); } });
     });
     $('#dl-pdf').addEventListener('click', onPdf);
+    $('#s-dl').addEventListener('click', onPdf);
+    $('#preview-pdf').addEventListener('click', onPreview);
+    $('#preview-dl').addEventListener('click', onPdf);
     $('#dl-xlsx').addEventListener('click', onXlsx);
-    renderTable();
+    let resizeTimer;
+    window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 150); });
+    render();
   }
 
   document.addEventListener('DOMContentLoaded', init);

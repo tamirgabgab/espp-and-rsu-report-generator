@@ -15,71 +15,103 @@ dates appears as several rows, and each becomes its own form.
 
 The execution **time** of a sale is not in this file. It is shown in E*Trade
 under *View Order Details*, in New York time. You only need it if you want to
-see the market rate at the exact moment of the sale (step 4).
+see the market rate at the exact moment of the sale (see step 3).
 
-## 2. Personal details
+## 2. Import
 
-Fill in:
-- your name;
-- your ID number. It is written in the "מספר תיק" (file number) box of the form;
-- *שייכות* (relationship);
-- the asset location;
-- the date printed on the form;
-- whether the shares are under **section 102**. This is the default for every
-  row, and you can change it per row.
+- **Upload:** drag the file anywhere onto the page, or click the upload area to
+  pick it.
+- **Other options:** add a lot by hand with "הוספת עסקה ידנית", or try the demo
+  with "טעינת דוגמה".
+- **Headline numbers:** once there is at least one complete lot, these appear
+  at the top:
+  - the **real gain** after loss offset;
+  - the **estimated tax**;
+  - the **next advance payment** with its due date;
+  - the number of lots.
 
-These details are saved **only in your browser** (localStorage) for next time.
-They are never uploaded.
+  A bar with the gain, the tax and a download button stays pinned to the bottom
+  of the screen.
 
-## 3. Import and review
+## 3. Review the lots
 
-- **Import:** upload the file. You can also add rows by hand ("הוספת שורה
-  ידנית"), or load the demo ("טעינת דוגמה").
-- **Table columns:** each row shows the symbol, plan type, quantity, purchase
-  date, sale date, optional sale time, proceeds $, cost $ (E*Trade *Adjusted
-  Cost Basis*), fees $ and section 102.
-- **Rates:** the purchase and sale rates are filled in automatically from the
-  Bank of Israel. If the field shows a `*`, no rate was published that day, so
-  the last earlier rate is used. To override a rate, type a value in the field.
-- **Calculated columns:**
-  - proceeds ₪ and cost ₪;
-  - nominal gain;
-  - inflationary amount;
-  - real gain or loss;
-  - estimated tax.
-- **Missing data:** rows with missing or invalid data are highlighted, with an
-  explanation under the row. They are left out of the PDF.
+Each lot is shown as a table row on a computer and as a card on a phone. Each
+one has a status badge:
+- **✓ תקין:** the calculation is complete and all rate sources agree;
+- **⚠ חסר:** data is missing. Open it to see what;
+- **⚠ שער:** ECB or Yahoo deviates unusually from the Bank of Israel rate
+  (above 1% / 1.5%). Check the rate on the Bank of Israel website.
 
-## 4. Rate control (בקרת שערים)
+**"איך חושב?"** (how was it calculated?) opens a panel with:
+- every step of the calculation. Each step shows the general formula and your
+  numbers substituted into it, with the rate date used;
+- which case of Circular 10/2025 applies (for example "gain, shekel
+  strengthened");
+- a rate cross-check table: Bank of Israel, ECB and Yahoo for the purchase and
+  sale dates;
+- the market rate at the sale minute, if you entered a sale time. This is
+  information only and never goes on the form.
 
-For every purchase and sale date, this section shows:
-- the Bank of Israel rate (the one used on the form);
-- the ECB rate and the Yahoo Finance close, with their deviation from the Bank
-  of Israel rate. A date is highlighted when the deviation is unusual (ECB
-  above 1%, Yahoo above 1.5%). If you see one, check the rate on the Bank of
-  Israel website;
-- if you entered a sale time: the market rate at that minute or hour, its
-  difference from the official rate, and the effect on the proceeds in ₪.
-  This is **information only** and never goes on the form.
+The **pencil** opens the edit drawer:
+- missing or invalid fields show an error right under the field;
+- **"הדבקה מ‑Order Details":** paste the execution line from E*Trade (for
+  example `Executed 05/11/2026 10:35:12 AM ET`), and the sale date and time are
+  filled in automatically;
+- **"שערים ידניים (מתקדם)"** (manual rates, advanced): override the rates only
+  if you have a reason to.
 
-## 5. Summary
+The **bin** deletes a lot. A message with **"ביטול"** (undo) lets you restore
+it for a few seconds. "מחיקת הכל" (delete all) works the same way.
 
-The summary shows totals per half-year and per year:
+When the lots span more than one tax year, **year chips** ("כל השנים" for all
+years, 2025, 2026, …) filter what you see:
+- the list;
+- the headline numbers;
+- the summary;
+- the chart;
+- the downloads.
+
+## 4. Summary and explanation
+
+The summary cards show totals per half-year and per year:
 - gains;
 - losses offset against them;
 - net real gain;
 - estimated tax (25%).
 
-Each half-year shows the due date for the semi-annual report and advance
-payment (31.7 for January–June, 31.1 of the next year for July–December).
+Each half-year also shows the due date of its advance payment (31.7 / 31.1).
 
-## 6. Download
+**"איך מחושב המס?"** (how is the tax calculated?) explains the general method,
+with formulas, using your first lot as a worked example:
+- the parameters;
+- the conversion to shekels;
+- the inflationary amount;
+- the one-line rule for the real gain;
+- capital-gains tax and loss offset;
+- how capital-gains tax differs from the marginal tax on the employee benefit.
 
-- **PDF:**
-  - one official form 1399 page per lot;
-  - an appendix laid out like form 1325, with every lot plus half-year and
-    year totals.
-- **Excel:** three sheets: lots, summary and rate control.
+See [tax-calculation.md](tax-calculation.md) for the full rules.
+
+## 5. Details and download
+
+Fill in:
+- your name;
+- your ID number. The check digit is validated, and the number is written in
+  the "מספר תיק" (file number) box;
+- *שייכות* (relationship);
+- the asset location;
+- the date on the form;
+- the default for section 102.
+
+All of this is saved only in your browser.
+
+Then:
+- **תצוגה מקדימה** (preview) shows the exact PDF inside the page before you
+  download it;
+- **הורדת PDF** (download PDF) gives one official form 1399 page per lot, plus
+  an appendix laid out like form 1325;
+- **הורדת Excel** (download Excel) gives three sheets: lots, summary and rate
+  control.
 
 The chart shows the USD/ILS representative rate since 2020, with your purchase
 dates (green) and sale dates (orange) marked.
@@ -103,8 +135,8 @@ the rate-control section: if ECB and Yahoo agree with the Bank of Israel rate,
 the manual rate was probably taken from a different date.
 
 **How do I delete my data?**
-Click "מחיקת כל העסקאות" (delete all transactions), or clear the site data in
-your browser settings.
+Click "מחיקת הכל" (delete all), or clear the site data in your browser
+settings.
 
 **The PDF button fails when I open `index.html` from my computer.**
 Browsers block file loading from `file://`. Use the live link, or run a local

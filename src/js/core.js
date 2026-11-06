@@ -281,6 +281,70 @@
     return { rate: file.c[lo], ts: file.t0 + (file.t[lo] + 1) * step, interval: step, exact: file.t[lo] === target };
   }
 
+  // ---------------------------------------------------------------- helpers for the UI
+
+  /**
+   * Closed form of the Circular 10/2025 rules, used to explain the result:
+   *   A = USD result converted at the sale rate = (P$ - C$ - F$) x Rs
+   *   B = nominal ILS result                     = P$ x Rs - C$ x Rb - F$ x Rs
+   *   real = min(A, B) if both are gains, max(A, B) if both are losses, otherwise 0.
+   * computeLot() implements the circular step by step; this must agree with it.
+   */
+  function closedFormReal(lot, rateBuy, rateSell) {
+    const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
+    const A = (lot.proceedsUsd - lot.costUsd - fees) * rateSell;
+    const B = lot.proceedsUsd * rateSell - lot.costUsd * rateBuy - fees * rateSell;
+    let real;
+    if (A >= 0 && B >= 0) real = Math.min(A, B);
+    else if (A <= 0 && B <= 0) real = Math.max(A, B);
+    else real = 0;
+    return { A, B, real };
+  }
+
+  /** Israeli ID check digit (9 digits, shorter IDs are left-padded with zeros). */
+  function isValidIsraeliId(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits || digits.length > 9) return false;
+    const id = digits.padStart(9, '0');
+    let sum = 0;
+    for (let i = 0; i < 9; i++) {
+      let n = Number(id[i]) * ((i % 2) + 1);
+      if (n > 9) n -= 9;
+      sum += n;
+    }
+    return sum % 10 === 0;
+  }
+
+  /**
+   * Pull a date and an execution time out of text pasted from E*Trade's
+   * Order Details (e.g. "Executed 05/11/2026 10:35:12 AM ET").
+   * @returns {{date:string|null, time:string|null}}
+   */
+  function parseOrderText(text) {
+    const s = String(text || '');
+    const dm = s.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+    const tm = s.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?/);
+    let time = null;
+    if (tm) {
+      let h = Number(tm[1]);
+      const ap = tm[3] ? tm[3].toUpperCase() : '';
+      if (ap === 'PM' && h < 12) h += 12;
+      if (ap === 'AM' && h === 12) h = 0;
+      if (h <= 23) time = `${pad2(h)}:${tm[2]}`;
+    }
+    return { date: dm ? parseDate(dm[1]) : null, time };
+  }
+
+  /** Short Hebrew description of the Circular 10/2025 case a lot falls into. */
+  const SCENARIO_TEXT = {
+    'gain-no-inflation': 'רווח, והשקל התחזק או לא השתנה: אין סכום אינפלציוני וכל הרווח הנומינלי ריאלי (דוגמה 3 בחוזר).',
+    'gain-partly-inflationary': 'רווח, והשקל נחלש: החלק שנובע מעליית הדולר פטור כסכום אינפלציוני (דוגמה 1 בחוזר).',
+    'gain-all-inflationary': 'כל הרווח בשקלים נובע מעליית הדולר, ולכן אין רווח ריאלי (דוגמה 2 בחוזר, חלק ב).',
+    'loss-allowed': 'הפסד, והשקל נחלש: כל ההפסד הנומינלי מותר בקיזוז (דוגמה 2 בחוזר).',
+    'loss-partly-fx': 'הפסד, והשקל התחזק: החלק של ההפסד שנובע מירידת הדולר אינו מותר בקיזוז (דוגמה 4 בחוזר, הלכת מוזס).',
+    'fx-loss-only': 'רווח בדולרים אבל הפסד בשקלים: ההפסד נובע רק מהשער, ולכן אין רווח ואין הפסד.',
+  };
+
   // ---------------------------------------------------------------- E*Trade import
 
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -378,5 +442,6 @@
     TAX_RATE, parseDate, formatDateIL, addDays, halfOfYear, parseMoney, round2, roundILS,
     lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
     CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
+    closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,
   };
 });

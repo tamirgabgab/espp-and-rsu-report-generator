@@ -22,7 +22,10 @@
     host.innerHTML = '';
     const dates = Object.keys(rates).filter(d => d >= '2020-01-01').sort();
     if (!dates.length) return;
-    const W = 960, H = 300, m = { t: 12, r: 16, b: 28, l: 44 };
+    // Size the viewBox to the real container width so text stays 11px on phones.
+    const W = Math.max(300, Math.round(host.clientWidth || 960));
+    const H = W < 560 ? 220 : 300;
+    const m = { t: 12, r: 12, b: 28, l: 40 };
     const t0 = Date.parse(dates[0]), t1 = Date.parse(dates[dates.length - 1]);
     const vals = dates.map(d => rates[d]);
     const lo = Math.floor(Math.min(...vals) * 10) / 10, hi = Math.ceil(Math.max(...vals) * 10) / 10;
@@ -43,8 +46,10 @@
     }
     // X axis year ticks.
     const y0 = +dates[0].slice(0, 4), y1 = +dates[dates.length - 1].slice(0, 4);
+    const yearStep = W < 480 ? 2 : 1;
     for (let yr = y0; yr <= y1; yr++) {
       const d = `${yr}-01-01`;
+      if ((yr - y0) % yearStep) continue;
       if (Date.parse(d) < t0) continue;
       const xx = x(d);
       el('line', { x1: xx, x2: xx, y1: m.t, y2: H - m.b, stroke: 'var(--grid)', 'stroke-width': 0.5 }, svg);

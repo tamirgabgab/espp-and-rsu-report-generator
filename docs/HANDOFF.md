@@ -126,6 +126,58 @@ each work session.
 - Detailed docs moved to `docs/`: `user-guide.md`, `tax-calculation.md`,
   `exchange-rates.md` and `development.md`.
 
+## Done (session 1, UX round: packages A + B + C)
+
+### Package A: mobile and result first
+- Headline tiles at the top: real gain, tax, next advance payment with its due
+  date, and lot count.
+- A sticky bottom bar with the gain, the tax and a download button.
+- New page order: import → lots → summary/explanation → chart → details and
+  download. Personal details moved to the last step.
+- Lots are a compact table on desktop and cards below 760px. Editing moved to
+  a `<dialog>` drawer.
+- The chart sizes its viewBox to the container width, so labels stay readable
+  on phones.
+
+### Package B: trust and understanding
+- Each lot has a "איך חושב?" (how was it calculated?) panel:
+  - every formula with the numbers substituted;
+  - the rate date used;
+  - the Circular 10/2025 case (`Core.SCENARIO_TEXT`);
+  - the rate cross-check table;
+  - the intraday rate.
+- The old separate "rate control" section is merged into this panel. Each row
+  now has a status badge: ✓ / ⚠ missing data / ⚠ rate deviation.
+- A general explainer ("איך מחושב המס?") covers:
+  - the parameters P, C, F, R_b, R_s;
+  - the formulas;
+  - the closed-form rule `real = min/max(A, B)`;
+  - capital-gains tax vs. marginal tax;
+  - a substitution with the first lot's numbers.
+- `Core.closedFormReal` gives the closed form. A test checks it against
+  `computeLot` on 2,000 random lots, within ±3 ₪ of rounding.
+- Field-level validation in the edit drawer: on blur and on save, with
+  `aria-invalid` and error text under the field.
+- PDF preview in a dialog, using pdf.js 3.11.174 (lazy-loaded). It needs
+  `disableFontFace: true`, otherwise the form's Hebrew CID fonts render garbled.
+
+### Package C: import and editing comfort
+- Drop zone for the file; dropping anywhere on the page also works.
+- Delete and delete-all show a toast with undo, instead of `confirm()`.
+- Israeli ID check-digit validation (`Core.isValidIsraeliId`). An invalid ID
+  blocks export, while an empty ID is allowed with a reminder.
+- Pasting the "Order Details" text fills the sale date and time
+  (`Core.parseOrderText`, AM/PM aware).
+- Year chips filter the list, tiles, summary, chart and exports when the lots
+  span more than one year.
+
+### Requested by the user in this round
+- A general explanation of how the tax is calculated: a general formula that
+  depends on all the parameters (including the exchange rate), then the
+  specific numbers substituted.
+- An explanation of marginal tax vs. capital-gains tax.
+- Both are done: see above and `docs/tax-calculation.md`.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -143,13 +195,18 @@ each work session.
    - add it under `assets/forms/`;
    - let the app pick the form by sale year;
    - re-calibrate `FIELD_MAP` in `src/js/pdf1399.js` with `npm run sample`.
-4. **Section 102 trustee sales.** If the trustee already withheld tax, a 1399
+4. **UX package D (not started):**
+   - backup/restore of all data to a file;
+   - a ZIP for the accountant (PDF + Excel + source file);
+   - PWA installation and offline use;
+   - a manual light/dark theme toggle.
+5. **Section 102 trustee sales.** If the trustee already withheld tax, a 1399
    may not be needed at all. Consider a per-row "tax withheld" field that is
    excluded from the advance-payment totals.
-5. **Surtax.** The 3% + 2% surtax on capital income above ₪721,560 is not
+6. **Surtax.** The 3% + 2% surtax on capital income above ₪721,560 is not
    calculated; only a flat 25% is. Possibly add a warning when the yearly gain is large.
-6. **Other currencies.** Only USD is supported.
-7. **Page 2 of the form** ("פרטים נוספים") is not included. It is not needed
+7. **Other currencies.** Only USD is supported.
+8. **Page 2 of the form** ("פרטים נוספים") is not included. It is not needed
    for simple share sales.
 
 ## How to continue

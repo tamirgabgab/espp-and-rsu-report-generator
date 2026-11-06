@@ -25,6 +25,28 @@ covered by `tests/core.test.js`.
 
 ILS amounts are rounded to whole shekels, as on the paper form.
 
+## The whole rule in one line
+
+Let:
+- **A** = (P$ − C$ − F$) × R<sub>s</sub>: the dollar result, converted at the
+  sale rate;
+- **B** = P$×R<sub>s</sub> − C$×R<sub>b</sub> − F$×R<sub>s</sub>: the nominal
+  ILS result.
+
+Then:
+
+**real = min(A, B)** if both are gains · **max(A, B)** if both are losses ·
+**0** if their signs differ.
+
+In other words, take the result that is smaller in absolute value. This is
+algebraically the same as the step-by-step rules below:
+- when the shekel weakened, B − inflationary = A;
+- when it strengthened, the inflationary amount is ignored and B is used.
+
+`Core.closedFormReal` implements it, and a unit test checks that it agrees with
+`computeLot` on 2,000 random lots. The app uses it in the "how was it
+calculated?" panel.
+
 ## Cases
 
 | Case | Inflationary amount | Real gain / loss |
@@ -47,6 +69,19 @@ ILS amounts are rounded to whole shekels, as on the paper form.
   - the surtax: 3% plus another 2% on capital income, above ₪721,560 a year;
   - offsetting losses against dividends or interest;
   - foreign tax credits.
+
+## Marginal tax vs. capital-gains tax
+
+| Part of the value | Type | Rate | How it is paid |
+|---|---|---|---|
+| ESPP discount = (FMV on purchase date − price paid) × qty | Employment income | marginal brackets, 10%–47% plus surtax | through payroll |
+| RSU value at vest (no trustee) | Employment income | marginal | through payroll |
+| 102 capital-gains track: value up to the 30-trading-day average before the grant | Employment income | marginal | withheld by the trustee at sale |
+| Change in value after the purchase / vest (or above the 102 average) | **Capital gain** | **25%** flat (30% for a substantial shareholder) | this report and the advance payments |
+
+Because the benefit is already taxed as salary, the capital-gain cost is the
+FMV on the purchase / vest date (E*Trade's Adjusted Cost Basis). Using the
+price actually paid would tax the discount twice.
 
 ## Cost basis
 
