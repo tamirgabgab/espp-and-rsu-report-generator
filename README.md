@@ -79,6 +79,7 @@ The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 | `tools/` | `update_rates.py`, which downloads all rate sources and the stock prices |
 | `tests/` | Unit tests and a sample PDF renderer |
 | `docs/` | Documentation |
+| `.claude/skills/hebrew-rtl/` | A Claude skill for Hebrew / RTL output (chat, PDF, Excel, CSV) with a checker script. `npm run skill:zip` packages it for upload to claude.ai |
 | `.github/workflows/` | Weekly rate update and tests on every push |
 
 ## For developers

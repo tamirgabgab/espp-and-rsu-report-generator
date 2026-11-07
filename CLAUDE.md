@@ -5,6 +5,8 @@
 - RTL-safe Hebrew: every paragraph, heading, table cell and list item must start with a Hebrew word.
   If a line has to begin with a Latin character or a number, put the RLM mark (U+200F) first.
 - Ask clarifying questions before big changes, and end each work round with a short summary by sections.
+- The project skill `.claude/skills/hebrew-rtl/` holds the RTL rules (chat, PDF, XLSX, CSV) and a checker,
+  `scripts/rtl_check.py`. Use it for Hebrew output.
 
 ## Project
 - Static web app (no build step) that turns E*Trade ESPP/RSU sale transactions into a filled

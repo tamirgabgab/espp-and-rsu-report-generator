@@ -6,6 +6,7 @@
     "test": "node --test tests/*.test.js",
     "sample": "node tests/render_sample.js",
     "rates": "python3 tools/update_rates.py",
-    "serve": "python3 -m http.server 8000"
+    "serve": "python3 -m http.server 8000",
+    "skill:zip": "rm -f out/hebrew-rtl-skill.zip && mkdir -p out && cd .claude/skills && python3 -m zipfile -c ../../out/hebrew-rtl-skill.zip hebrew-rtl/"
   }
 }

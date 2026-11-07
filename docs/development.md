@@ -113,6 +113,25 @@ Settings → Pages → Deploy from a branch → `main` / root, and `.nojekyll`
 disables Jekyll processing. Every push to `main`, including the weekly rate
 commit, redeploys the site within a minute or two.
 
+## Hebrew / RTL skill
+
+`.claude/skills/hebrew-rtl/` is a Claude Agent Skill that Claude Code loads in
+this repository, both locally and in cloud sessions:
+- `SKILL.md` has the hard rules;
+- `references/chat-writing.md` covers Hebrew chat and Markdown;
+- `references/files.md` covers PDF, XLSX, CSV and DOCX;
+- `scripts/rtl_check.py` is the checker. It uses only the standard library,
+  plus `pdftotext` for PDFs.
+
+```bash
+python3 .claude/skills/hebrew-rtl/scripts/rtl_check.py text some-hebrew.md
+python3 .claude/skills/hebrew-rtl/scripts/rtl_check.py pdf out/sample.pdf
+```
+
+To use the skill in every project, run `npm run skill:zip` and upload
+`out/hebrew-rtl-skill.zip` on claude.ai (Customize → Skills → + → Upload a
+skill). Skills enabled on claude.ai also load in Claude Code cloud sessions.
+
 ## Conventions
 
 - Code, comments, commit messages and docs are in English. The UI is in Hebrew

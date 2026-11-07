@@ -384,6 +384,23 @@ Decided with the user before building.
   remembered in `f1399.view`, and `#sim` in the URL opens the simulator.
 - Tests: 31 unit tests (9 new).
 
+## Done (session 2): Hebrew / RTL skill
+
+- Built by the user's request; it covers chat writing, PDF/Excel/CSV files and
+  an automatic checker. Web UI rules were not requested.
+- `.claude/skills/hebrew-rtl/` contains:
+  - `SKILL.md`: hard rules;
+  - `references/chat-writing.md`;
+  - `references/files.md`;
+  - `scripts/rtl_check.py` (`text` / `pdf` / `xlsx` / `csv`).
+- **Reversed-Hebrew heuristic:** final letters (ך ם ן ף ץ) appearing at the
+  start of words.
+- **Tested** on synthetic good/bad Markdown, on the app's PDF and XLSX
+  (pass), and on an XLSX with RTL removed and a reversed CSV (both flagged).
+- **Everywhere:** `npm run skill:zip` builds `out/hebrew-rtl-skill.zip` for
+  upload on claude.ai (Customize → Skills), which makes the skill available in
+  all projects, including cloud sessions.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
