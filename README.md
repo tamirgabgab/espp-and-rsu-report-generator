@@ -21,8 +21,8 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
   vs. marginal (salary) tax.
 - **Optional rate at the exact sale time** (minute / hour), for your
   information only.
-- **Private.** Everything runs in your browser. Nothing is uploaded, and your
-  name and ID number are never stored in this repository.
+- **Private.** Everything runs in your browser and nothing is uploaded. Your
+  ID number is never saved, not even in the browser.
 
 ## Quick start
 

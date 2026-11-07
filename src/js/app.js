@@ -27,7 +27,8 @@
 
   // ------------------------------------------------------------ state
 
-  const profile = Object.assign({ name: '', idNumber: '', belonging: '2', place: 'israel', sec102: true, signDate: '' }, store.get(LS_PROFILE, {}));
+  // The ID number is sensitive: it lives only in memory and is never written to storage.
+  const profile = Object.assign({ name: '', belonging: '2', place: 'israel', sec102: true, signDate: '' }, store.get(LS_PROFILE, {}), { idNumber: '' });
   let lots = store.get(LS_LOTS, []).map(l => ({ ...l, id: nextId++ }));
   let yearFilter = 'all';
   const openPanels = new Set();
@@ -39,7 +40,8 @@
   ];
 
   function persist() {
-    store.set(LS_PROFILE, profile);
+    const { idNumber, ...safeProfile } = profile; // never store the ID number
+    store.set(LS_PROFILE, safeProfile);
     store.set(LS_LOTS, lots.map(({ id, ...rest }) => rest));
   }
 
@@ -103,7 +105,7 @@
     if (yearFilter !== 'all' && !years.includes(yearFilter)) yearFilter = 'all';
     const host = $('#year-filter');
     host.hidden = years.length < 2;
-    host.innerHTML = ['all', ...years].map(y => `<button type="button" class="chip" role="radio" aria-checked="${y === yearFilter}" data-year="${y}">${y === 'all' ? 'כל השנים' : y}</button>`).join('');
+    host.innerHTML = ['all', ...years].map(y => `<button type="button" class="chip" role="radio" aria-checked="${y === yearFilter}" tabindex="${y === yearFilter ? 0 : -1}" data-year="${y}">${y === 'all' ? 'כל השנים' : y}</button>`).join('');
     $('#clear-all').hidden = lots.length === 0;
   }
 
@@ -123,8 +125,8 @@
     const open = openPanels.has(id);
     return `<button type="button" class="btn-link" data-act="explain" data-id="${id}" aria-expanded="${open}">${open ? 'סגירת ההסבר' : 'איך חושב?'}</button>
       <span class="${compact ? 'right' : ''}">
-        <button type="button" class="icon-btn" data-act="edit" data-id="${id}" aria-label="עריכת העסקה" title="עריכה">${ICON_EDIT}</button>
-        <button type="button" class="icon-btn danger" data-act="delete" data-id="${id}" aria-label="מחיקת העסקה" title="מחיקה">${ICON_DEL}</button>
+        <button type="button" class="icon-btn" data-act="edit" data-id="${id}" aria-label="עריכת העסקה" data-tip="עריכת העסקה">${ICON_EDIT}</button>
+        <button type="button" class="icon-btn danger" data-act="delete" data-id="${id}" aria-label="מחיקת העסקה" data-tip="מחיקת העסקה">${ICON_DEL}</button>
       </span>`;
   }
 
@@ -480,10 +482,13 @@
       sec102: F('sec102').checked === !!profile.sec102 ? null : F('sec102').checked,
       rateBuy: F('rateBuy').value, rateSell: F('rateSell').value,
     };
+    let savedId = editingId;
     if (editingId) Object.assign(lots.find(l => l.id === editingId), data);
-    else lots.push({ ...blankLot(), ...data });
+    else { const lot = { ...blankLot(), ...data }; lots.push(lot); savedId = lot.id; }
+    if (yearFilter !== 'all' && data.dateSold.slice(0, 4) !== yearFilter) yearFilter = 'all';
     dlg.close();
     render();
+    focusLot(savedId, 'edit');
     toast(editingId ? 'העסקה עודכנה' : 'העסקה נוספה');
   }
 
@@ -519,7 +524,23 @@
     const [removed] = lots.splice(idx, 1);
     openPanels.delete(id);
     render();
-    toast(`העסקה ${removed.symbol || ''} נמחקה`.replace('  ', ' '), { label: 'ביטול', run: () => { lots.splice(idx, 0, removed); render(); } });
+    // Keep keyboard users in place: focus the next lot (or the previous one, or the list heading).
+    const visible = visibleItems().map(it => it.lot.id);
+    const next = visible.find(v => lots.findIndex(l => l.id === v) >= idx) ?? visible[visible.length - 1];
+    if (next !== undefined) focusLot(next, 'delete'); else $('#lots-title').focus();
+    toast(`העסקה ${removed.symbol || ''} נמחקה`.replace('  ', ' '), { label: 'ביטול', run: () => { lots.splice(idx, 0, removed); render(); focusLot(removed.id, 'edit'); } });
+  }
+
+  /** Move focus to a lot's action button in whichever layout (table or cards) is visible. */
+  function focusLot(id, act) {
+    const el = [...document.querySelectorAll(`[data-act="${act}"][data-id="${id}"]`)].find(e => e.offsetParent);
+    if (el) el.focus();
+  }
+
+  /** Smooth scroll unless the user asked for reduced motion. */
+  function scrollToEl(el) {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   }
 
   function onListClick(ev) {
@@ -539,7 +560,37 @@
 
   // ------------------------------------------------------------ import
 
-  function setMsg(el, text, kind) { el.className = `msg ${kind || ''}`; el.textContent = text; }
+  /**
+   * Status message under a section. `actions` adds recovery buttons; `details` adds
+   * "העתקת פרטי השגיאה" (copy error details) instead of showing raw errors in the UI.
+   */
+  function setMsg(el, text, kind, { actions = [], details } = {}) {
+    el.className = `msg ${kind || ''}`;
+    el.textContent = text;
+    const all = actions.slice();
+    if (details) {
+      all.push({
+        label: 'העתקת פרטי השגיאה',
+        run: async () => {
+          try { await navigator.clipboard.writeText(String(details)); toast('פרטי השגיאה הועתקו'); } catch { toast('ההעתקה לא הצליחה. הפרטים מופיעים בקונסולה של הדפדפן.'); }
+        },
+      });
+    }
+    if (!all.length) return;
+    const row = document.createElement('span');
+    row.className = 'msg-actions';
+    for (const a of all) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-sm';
+      b.textContent = a.label;
+      b.addEventListener('click', a.run);
+      row.appendChild(b);
+    }
+    el.appendChild(row);
+  }
+
+  const errDetails = e => `${e && e.name ? e.name : 'Error'}: ${e && e.message ? e.message : e}\n${(e && e.stack) || ''}`;
 
   async function importFile(file) {
     const msg = $('#import-msg');
@@ -560,10 +611,12 @@
       render();
       const extra = best.warnings.length ? ` שים לב: ${best.warnings.join(' · ')}` : '';
       setMsg(msg, `יובאו ${lots.length - before} מכירות מהקובץ ${file.name}.${extra}`, best.warnings.length ? 'warn' : 'ok');
-      $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollToEl($('#hero'));
     } catch (e) {
       console.error(e);
-      setMsg(msg, `לא הצלחנו לקרוא את הקובץ (${e.message}). ודא שזה קובץ Excel או CSV שירד מ‑E*Trade.`, 'err');
+      setMsg(msg, 'הקובץ לא נקרא. אפשר לנסות שוב עם קובץ G&L_Expanded.xlsx או CSV שירד מ‑E*Trade.', 'err', {
+        actions: [{ label: 'בחירת קובץ אחר', run: () => $('#file').click() }], details: errDetails(e),
+      });
     }
   }
 
@@ -585,7 +638,7 @@
     const v = input.value.trim();
     let err = '';
     if (v && !/^\d+$/.test(v)) err = 'מספר זהות מכיל ספרות בלבד';
-    else if (v && !Core.isValidIsraeliId(v)) err = 'מספר הזהות לא תקין (ספרת הביקורת לא מתאימה). בדוק שהקלדת את כל 9 הספרות.';
+    else if (v && !Core.isValidIsraeliId(v)) err = 'ספרת הביקורת לא מתאימה למספר. כדאי לבדוק את כל 9 הספרות.';
     else if (!v && showEmpty) err = 'מומלץ למלא מספר זהות. הוא נכתב בשדה "מספר תיק" בטופס.';
     input.setAttribute('aria-invalid', err && v ? 'true' : 'false');
     $('#p-id-err').textContent = err;
@@ -637,7 +690,7 @@
     const msg = $('#export-msg');
     if (!ok.length) { setMsg(msg, 'אין עסקאות תקינות להורדה. השלם את העסקאות המסומנות ב‑⚠.', 'err'); return null; }
     if (!validateId(false)) {
-      $('#export').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollToEl($('#export'));
       $('#p-id').focus();
       setMsg(msg, 'יש לתקן את מספר הזהות לפני ההורדה.', 'err');
       return null;
@@ -671,8 +724,10 @@
         if (!profile.idNumber) toast('הטופס ירד בלי מספר זהות. אפשר למלא אותו בשלב 4.');
       } catch (e) {
         console.error(e);
-        const hint = location.protocol === 'file:' ? ' הדף נפתח ישירות מהדיסק. צריך לפתוח אותו דרך הקישור לאתר או דרך שרת מקומי.' : '';
-        setMsg(msg, `יצירת ה‑PDF נכשלה: ${e.message}.${hint}`, 'err');
+        const text = location.protocol === 'file:'
+          ? 'יצירת ה‑PDF נכשלה כי הדף נפתח ישירות מהדיסק. אפשר לפתוח אותו דרך הקישור לאתר.'
+          : 'יצירת ה‑PDF נכשלה. אפשר לנסות שוב.';
+        setMsg(msg, text, 'err', { actions: [{ label: 'ניסיון חוזר', run: onPdf }], details: errDetails(e) });
       }
     });
   }
@@ -716,7 +771,8 @@
       }
     } catch (e) {
       console.error(e);
-      pages.innerHTML = `<p class="loading">התצוגה המקדימה נכשלה (${esc(e.message)}). אפשר עדיין להוריד את הקובץ.</p>`;
+      pages.innerHTML = '<p class="loading">התצוגה המקדימה לא נטענה. אפשר להוריד את הקובץ ישירות.</p>';
+      setMsg($('#export-msg'), 'התצוגה המקדימה לא נטענה.', 'err', { actions: [{ label: 'ניסיון חוזר', run: () => { pd.close(); onPreview(); } }], details: errDetails(e) });
     }
   }
 
@@ -763,11 +819,29 @@
     bindDropzone();
     $('#lots-body').addEventListener('click', onListClick);
     $('#lots-cards').addEventListener('click', onListClick);
+    const chooseYear = year => {
+      yearFilter = year;
+      render();
+      const chip = $(`#year-filter [data-year="${year}"]`);
+      if (chip) chip.focus();
+    };
     $('#year-filter').addEventListener('click', e => {
       const chip = e.target.closest('[data-year]');
-      if (!chip) return;
-      yearFilter = chip.dataset.year;
-      render();
+      if (chip) chooseYear(chip.dataset.year);
+    });
+    // Radio group keyboard pattern (RTL: Left = next, Right = previous).
+    $('#year-filter').addEventListener('keydown', e => {
+      const chips = [...$('#year-filter').querySelectorAll('[data-year]')];
+      const i = chips.indexOf(document.activeElement);
+      if (i === -1) return;
+      const step = { ArrowLeft: 1, ArrowDown: 1, ArrowRight: -1, ArrowUp: -1 }[e.key];
+      let j = null;
+      if (step) j = (i + step + chips.length) % chips.length;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = chips.length - 1;
+      if (j === null) return;
+      e.preventDefault();
+      chooseYear(chips[j].dataset.year);
     });
     $('#add-row').addEventListener('click', () => openEditor(null));
     $('#load-example').addEventListener('click', () => {
@@ -775,14 +849,28 @@
       render();
       setMsg($('#import-msg'), 'נטענה דוגמה: מכירת 17 מניות QCOM מתוכנית ESPP.', 'ok');
     });
+    // Delete all: named confirmation first (Cancel focused), then an undo toast.
+    const cd = $('#confirm-dialog');
     $('#clear-all').addEventListener('click', () => {
       if (!lots.length) return;
+      const n = lots.length;
+      const what = n === 1 ? 'העסקה' : `כל ${n} העסקאות`;
+      $('#confirm-title').textContent = `למחוק את ${what}?`;
+      $('#confirm-body').textContent = `הפעולה מוחקת ${n === 1 ? 'עסקה אחת' : `${n} עסקאות`} מהרשימה בדפדפן הזה. אחרי המחיקה אפשר לבטל אותה לכמה שניות.`;
+      $('#confirm-ok').textContent = n === 1 ? 'מחיקת העסקה' : `מחיקת ${n} עסקאות`;
+      cd.showModal();
+      $('#confirm-cancel').focus();
+    });
+    $('#confirm-ok').addEventListener('click', () => {
+      cd.close();
       const backup = lots.slice();
       lots = [];
       openPanels.clear();
       render();
-      toast(`נמחקו ${backup.length} עסקאות`, { label: 'ביטול', run: () => { lots = backup; render(); } });
+      $('#lots-title').focus();
+      toast(`נמחקו ${backup.length === 1 ? 'עסקה אחת' : `${backup.length} עסקאות`}`, { label: 'ביטול', run: () => { lots = backup; render(); } });
     });
+    cd.addEventListener('click', e => { if (e.target === cd || e.target.closest('[data-close]')) cd.close(); });
     $('#dl-pdf').addEventListener('click', onPdf);
     $('#s-dl').addEventListener('click', onPdf);
     $('#preview-pdf').addEventListener('click', onPreview);

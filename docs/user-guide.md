@@ -60,8 +60,10 @@ The **pencil** opens the edit drawer:
 - **"שערים ידניים (מתקדם)"** (manual rates, advanced): override the rates only
   if you have a reason to.
 
-The **bin** deletes a lot. A message with **"ביטול"** (undo) lets you restore
-it for a few seconds. "מחיקת הכל" (delete all) works the same way.
+The **bin** deletes a lot right away. A message with **"ביטול"** (undo) lets
+you restore it for a few seconds. "מחיקת הכל" (delete all) first asks for
+confirmation, naming how many lots will go. The cancel button has the focus, so
+Enter or Esc keeps the lots. After deleting, undo is offered as well.
 
 When the lots span more than one tax year, **year chips** ("כל השנים" for all
 years, 2025, 2026, …) filter what you see:
@@ -103,7 +105,8 @@ Fill in:
 - the date on the form;
 - the default for section 102.
 
-All of this is saved only in your browser.
+Everything except the ID number is saved only in your browser. The ID number
+is never saved: type it again each time you download a form.
 
 Then:
 - **תצוגה מקדימה** (preview) shows the exact PDF inside the page before you

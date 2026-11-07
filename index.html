@@ -68,7 +68,7 @@
     <!-- 2. Lots -->
     <section class="card" id="lots" aria-labelledby="lots-title">
       <div class="card-head">
-        <h2 id="lots-title"><span class="step">2</span> עסקאות</h2>
+        <h2 id="lots-title" tabindex="-1"><span class="step">2</span> עסקאות</h2>
         <div class="card-tools">
           <div id="year-filter" class="chips" role="radiogroup" aria-label="סינון לפי שנת מס" hidden></div>
           <button id="clear-all" class="btn btn-quiet btn-sm" type="button" hidden>מחיקת הכל</button>
@@ -119,7 +119,7 @@
     <!-- 4. Details + download -->
     <section class="card" id="export" aria-labelledby="export-title">
       <h2 id="export-title"><span class="step">4</span> פרטים לטופס והורדה</h2>
-      <p class="hint">הפרטים נשמרים רק בדפדפן הזה ולא נשלחים לשום מקום.</p>
+      <p class="hint">השם ושאר הפרטים נשמרים רק בדפדפן הזה. מספר תעודת הזהות לא נשמר בכלל, וצריך להקליד אותו בכל פעם שמורידים טופס.</p>
       <div class="grid">
         <div class="field">
           <label for="p-name">שם המוכר</label>
@@ -183,7 +183,7 @@
     <form id="lot-form" method="dialog" novalidate>
       <header class="drawer-head">
         <h2 id="lot-dialog-title">עריכת עסקה</h2>
-        <button type="button" class="icon-btn" data-close aria-label="סגירה" title="סגירה (Esc)">×</button>
+        <button type="button" class="icon-btn" data-close aria-label="סגירה" data-tip="סגירה · Esc">×</button>
       </header>
       <div class="drawer-body">
         <div class="grid grid-2">
@@ -264,10 +264,20 @@
       <h2 id="preview-title">תצוגה מקדימה</h2>
       <div class="head-actions">
         <button type="button" class="btn btn-primary btn-sm" id="preview-dl">הורדת PDF</button>
-        <button type="button" class="icon-btn" data-close aria-label="סגירה" title="סגירה (Esc)">×</button>
+        <button type="button" class="icon-btn" data-close aria-label="סגירה" data-tip="סגירה · Esc">×</button>
       </div>
     </header>
     <div class="preview-pages" id="preview-pages"></div>
+  </dialog>
+
+  <!-- Destructive confirmation (delete all) -->
+  <dialog id="confirm-dialog" class="confirm" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-body"></p>
+    <div class="confirm-actions">
+      <button type="button" class="btn" id="confirm-cancel" data-close>ביטול</button>
+      <button type="button" class="btn btn-danger" id="confirm-ok"></button>
+    </div>
   </dialog>
 
   <div id="toasts" class="toasts" aria-live="polite"></div>

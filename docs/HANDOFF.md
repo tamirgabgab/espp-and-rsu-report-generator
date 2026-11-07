@@ -178,6 +178,37 @@ each work session.
 - An explanation of marginal tax vs. capital-gains tax.
 - Both are done: see above and `docs/tax-calculation.md`.
 
+## Done (session 1, UX audit, priority 1: hard-rule fixes)
+
+A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
+
+- **`[hidden]` bug:** `[hidden]{display:none!important}`. The year chips and
+  "delete all" no longer show on an empty list.
+- **Focus management:**
+  - after saving, focus returns to the lot's edit button;
+  - after a delete, it moves to the next lot (or the list heading);
+  - after undo, it moves to the restored lot.
+  - Helper: `focusLot()`.
+- **ID number is never persisted.** `persist()` strips `idNumber`, and old
+  stored values are dropped on load. Decided with the user.
+- **Delete-all confirmation:** an `alertdialog` that names the count, with
+  Cancel focused, and the confirm button saying "מחיקת N עסקאות". An undo toast
+  follows. Single-lot delete stays instant with undo, a deliberate exception
+  agreed with the user.
+- **Hit targets:** every control is at least 44px (buttons, chips, links,
+  summaries, inputs, footer link, toast action). Measured.
+- **Year chips:** a real radiogroup with a roving tabindex. Arrow keys (RTL:
+  Left = next), Home and End select and focus.
+- **Tooltips:** icon buttons use `data-tip` CSS tooltips, shown on hover and on
+  focus-visible, instead of `title`. `aria-label` matches the tooltip text.
+- **Errors:**
+  - no raw `e.message` in the UI;
+  - messages are short, without blame, and offer recovery ("ניסיון חוזר",
+    "בחירת קובץ אחר") plus "העתקת פרטי השגיאה" (copy error details);
+  - helper: `setMsg(el, text, kind, {actions, details})`.
+- **Reduced motion:** `scrollToEl()` uses instant scroll when
+  `prefers-reduced-motion: reduce` is set.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust

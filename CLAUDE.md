@@ -18,5 +18,5 @@
   All sources are refreshed weekly by .github/workflows/update-rates.yml.
 - Layout: app code in src/, data in data/rates/, maintenance scripts in tools/, docs in docs/.
   index.html must stay at the repo root (GitHub Pages serves main / root).
-- Never commit personal data (ID number, real transaction files). Personal details live only in the
-  browser's localStorage.
+- Never commit personal data (ID number, real transaction files). Profile details (name etc.) live
+  only in the browser's localStorage; the ID number is never persisted anywhere (memory only).
