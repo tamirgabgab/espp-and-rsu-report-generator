@@ -107,6 +107,7 @@
     host.hidden = years.length < 2;
     host.innerHTML = ['all', ...years].map(y => `<button type="button" class="chip" role="radio" aria-checked="${y === yearFilter}" tabindex="${y === yearFilter ? 0 : -1}" data-year="${y}">${y === 'all' ? 'כל השנים' : y}</button>`).join('');
     $('#clear-all').hidden = lots.length === 0;
+    $('#toolbar').hidden = lots.length === 0;
   }
 
   // ------------------------------------------------------------ lots
@@ -123,7 +124,7 @@
   function lotActions(it, compact) {
     const id = it.lot.id;
     const open = openPanels.has(id);
-    return `<button type="button" class="btn-link" data-act="explain" data-id="${id}" aria-expanded="${open}">${open ? 'סגירת ההסבר' : 'איך חושב?'}</button>
+    return `<button type="button" class="btn-link" data-act="explain" data-id="${id}" aria-expanded="${open}">${open ? 'הסתרת החישוב' : 'הצגת החישוב'}</button>
       <span class="${compact ? 'right' : ''}">
         <button type="button" class="icon-btn" data-act="edit" data-id="${id}" aria-label="עריכת העסקה" data-tip="עריכת העסקה">${ICON_EDIT}</button>
         <button type="button" class="icon-btn danger" data-act="delete" data-id="${id}" aria-label="מחיקת העסקה" data-tip="מחיקת העסקה">${ICON_DEL}</button>
@@ -216,7 +217,7 @@
       <p class="case">${esc(Core.SCENARIO_TEXT[calc.scenario] || '')}</p>
       <h3>בקרת שערים</h3>
       ${checksTable(it)}
-      <p class="intraday" data-intraday="${lot.id}">${lot.timeSold ? 'טוען את השער בשעת המכירה…' : 'כדי לראות את שער השוק בדקת המכירה, מוסיפים את שעת המכירה בעריכת העסקה.'}</p>
+      <p class="intraday" data-intraday="${lot.id}">${lot.timeSold ? '' : 'כדי לראות את שער השוק בדקת המכירה, מוסיפים את שעת המכירה בעריכת העסקה.'}</p>
     </div>`;
   }
 
@@ -264,7 +265,11 @@
   async function fillIntraday(it) {
     const { lot, calc } = it;
     if (!lot.timeSold || !calc.ok) return;
+    const t = setTimeout(() => {
+      for (const el of document.querySelectorAll(`[data-intraday="${lot.id}"]`)) if (!el.textContent) el.textContent = 'טוען את השער בשעת המכירה…';
+    }, 100);
     const ir = await intradayRate(lot);
+    clearTimeout(t);
     for (const el of document.querySelectorAll(`[data-intraday="${lot.id}"]`)) {
       if (!ir || ir.missing) {
         el.textContent = `אין נתוני דקה או שעה לשעה ${lot.timeSold} בתאריך הזה (ארכיון הדקות מתחיל ב‑${ir && ir.firstMinute ? ir.firstMinute : '?'}, נתוני שעה כשנתיים אחורה).`;
@@ -308,7 +313,7 @@
 
     const upcoming = halves.map(g => ({ g, due: dueDate(g.key) })).filter(x => x.due >= today()).sort((a, b) => a.due.localeCompare(b.due))[0];
     if (upcoming) {
-      $('#t-due').textContent = ils(upcoming.g.tax);
+      $('#t-due').textContent = upcoming.g.tax > 0 ? ils(upcoming.g.tax) : 'אין לתשלום';
       $('#t-due-sub').textContent = `עד ${Core.formatDateIL(upcoming.due)} · ${upcoming.g.label}`;
     } else {
       $('#t-due').textContent = '—';
@@ -359,7 +364,7 @@
           <span>B = ${L(`${usd(lot.proceedsUsd)} × ${rs} − ${usd(lot.costUsd)} × ${rb} − ${usd(fees)} × ${rs} = ${signed(calc.nominal)}`)}</span>
           <span>רווח ריאלי = ${L(`${signed(calc.real)} ₪`)} · מס = ${L(`${fmt(calc.tax)} ₪`)}</span>
         </div>
-        <p>${esc(Core.SCENARIO_TEXT[calc.scenario] || '')} את החישוב המלא של כל עסקה רואים בלחיצה על "איך חושב?" ליד העסקה.</p>`;
+        <p>${esc(Core.SCENARIO_TEXT[calc.scenario] || '')} את החישוב המלא של כל עסקה רואים בלחיצה על "הצגת החישוב" ליד העסקה.</p>`;
     }
     $('#explain-body').innerHTML = `
       <h3>הפרמטרים של כל מכירה (lot)</h3>
@@ -427,6 +432,7 @@
   const F = name => form.elements[name];
 
   function openEditor(id) {
+    clearTimeout(draftTimer); // a pending save belongs to the previous session
     const lot = id ? lots.find(l => l.id === id) : blankLot();
     editingId = id || null;
     $('#lot-dialog-title').textContent = id ? 'עריכת עסקה' : 'עסקה חדשה';
@@ -439,8 +445,53 @@
     for (const el of form.querySelectorAll('.field-error')) el.textContent = '';
     updateRatePlaceholders();
     form.querySelector('.advanced').open = !!(lot.rateBuy || lot.rateSell);
+    initialSnapshot = JSON.stringify(readForm());
+    showDraftBanner();
     dlg.showModal();
     setTimeout(() => (id ? F('dateSold') : F('symbol')).focus(), 30);
+  }
+
+  // ------------------------------------------------------------ editor drafts (lot data only, never the ID number)
+
+  const LS_DRAFT = 'f1399.draft';
+  const DRAFT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'rateBuy', 'rateSell'];
+  let initialSnapshot = '';
+  let draftTimer;
+  let savingLot = false;
+  const draftKey = () => (editingId ? `lot-${editingId}` : 'new');
+  const readForm = () => Object.fromEntries([...DRAFT_FIELDS.map(k => [k, F(k).value]), ['sec102', F('sec102').checked]]);
+
+  function saveDraft() {
+    const values = readForm();
+    if (JSON.stringify(values) === initialSnapshot) { store.set(LS_DRAFT, null); return; }
+    store.set(LS_DRAFT, { key: draftKey(), at: Date.now(), values });
+  }
+
+  function showDraftBanner() {
+    const d = store.get(LS_DRAFT, null);
+    const show = !!(d && d.key === draftKey() && d.values);
+    $('#draft-banner').hidden = !show;
+    if (show) {
+      const t = new Date(d.at);
+      const stamp = `${Core.formatDateIL(t.toISOString().slice(0, 10))}, ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+      $('#draft-text').innerHTML = `יש טיוטה שלא נשמרה (<bdi class="ltr">${stamp}</bdi>).`;
+    }
+  }
+
+  function restoreDraft() {
+    const d = store.get(LS_DRAFT, null);
+    if (!d || !d.values) return;
+    for (const k of DRAFT_FIELDS) F(k).value = d.values[k] ?? '';
+    F('sec102').checked = !!d.values.sec102;
+    updateRatePlaceholders();
+    $('#draft-banner').hidden = true;
+    F('dateSold').focus();
+  }
+
+  function discardDraft() {
+    store.set(LS_DRAFT, null);
+    $('#draft-banner').hidden = true;
+    F(editingId ? 'dateSold' : 'symbol').focus();
   }
 
   function updateRatePlaceholders() {
@@ -486,6 +537,9 @@
     if (editingId) Object.assign(lots.find(l => l.id === editingId), data);
     else { const lot = { ...blankLot(), ...data }; lots.push(lot); savedId = lot.id; }
     if (yearFilter !== 'all' && data.dateSold.slice(0, 4) !== yearFilter) yearFilter = 'all';
+    clearTimeout(draftTimer);
+    store.set(LS_DRAFT, null);
+    savingLot = true; // reset by the (asynchronous) close handler
     dlg.close();
     render();
     focusLot(savedId, 'edit');
@@ -494,6 +548,12 @@
 
   function bindEditor() {
     form.addEventListener('submit', saveEditor);
+    form.addEventListener('input', () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); });
+    form.addEventListener('change', () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); });
+    $('#draft-restore').addEventListener('click', restoreDraft);
+    // Closing without saving (Esc, backdrop, Cancel) keeps whatever was typed as a draft.
+    dlg.addEventListener('close', () => { clearTimeout(draftTimer); if (!savingLot) saveDraft(); savingLot = false; });
+    $('#draft-discard').addEventListener('click', discardDraft);
     for (const name of Object.keys(FIELD_RULES)) {
       const el = F(name);
       el.addEventListener('blur', () => { if (el.value !== '' || el.getAttribute('aria-invalid')) validateField(name); });
@@ -717,8 +777,9 @@
     const msg = $('#export-msg');
     await withBusy([$('#dl-pdf'), $('#s-dl'), $('#preview-dl')], async () => {
       try {
-        setMsg(msg, 'מכין את ה‑PDF…', '');
-        const bytes = await buildPdfBytes(ok);
+        const t = setTimeout(() => setMsg(msg, 'מכין את ה‑PDF…', ''), 100);
+        let bytes;
+        try { bytes = await buildPdfBytes(ok); } finally { clearTimeout(t); }
         download(bytes, `form-1399-${fileYear(ok)}.pdf`, 'application/pdf');
         setMsg(msg, `ירד PDF עם ${formsText(ok.length)} ודף סיכום.`, 'ok');
         if (!profile.idNumber) toast('הטופס ירד בלי מספר זהות. אפשר למלא אותו בשלב 4.');
@@ -745,7 +806,10 @@
     if (!ok) return;
     const pd = $('#preview-dialog');
     const pages = $('#preview-pages');
-    pages.innerHTML = '<p class="loading">מכין תצוגה מקדימה…</p>';
+    pages.innerHTML = '';
+    const skel = setTimeout(() => {
+      if (!pages.querySelector('canvas')) pages.innerHTML = '<div class="page-skeleton" role="img" aria-label="טוען את התצוגה המקדימה">' + '<i></i>'.repeat(14) + '</div>';
+    }, 100);
     pd.showModal();
     try {
       const bytes = await buildPdfBytes(ok);
@@ -756,6 +820,7 @@
       // disableFontFace: the form's embedded Hebrew CID fonts render garbled through
       // the browser's FontFace path; drawing glyphs as paths renders them correctly.
       const doc = await window.pdfjsLib.getDocument({ data: bytes, disableFontFace: true }).promise;
+      clearTimeout(skel);
       pages.innerHTML = '';
       const width = Math.min(pages.clientWidth - 32, 820);
       for (let n = 1; n <= doc.numPages; n++) {
@@ -771,6 +836,7 @@
       }
     } catch (e) {
       console.error(e);
+      clearTimeout(skel);
       pages.innerHTML = '<p class="loading">התצוגה המקדימה לא נטענה. אפשר להוריד את הקובץ ישירות.</p>';
       setMsg($('#export-msg'), 'התצוגה המקדימה לא נטענה.', 'err', { actions: [{ label: 'ניסיון חוזר', run: () => { pd.close(); onPreview(); } }], details: errDetails(e) });
     }
@@ -844,11 +910,19 @@
       chooseYear(chips[j].dataset.year);
     });
     $('#add-row').addEventListener('click', () => openEditor(null));
-    $('#load-example').addEventListener('click', () => {
+    const loadExample = () => {
       lots = lots.concat(EXAMPLE.map(l => ({ ...blankLot(), ...l })));
       render();
       setMsg($('#import-msg'), 'נטענה דוגמה: מכירת 17 מניות QCOM מתוכנית ESPP.', 'ok');
-    });
+    };
+    $('#load-example').addEventListener('click', loadExample);
+    $('#empty-example').addEventListener('click', loadExample);
+    $('#empty-upload').addEventListener('click', () => $('#file').click());
+    // Touch devices cannot drag files: say "choose" instead of "drag".
+    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+      document.querySelector('.dz-title').textContent = 'בחירת קובץ Excel מ‑E*Trade';
+      document.querySelector('.dz-sub').innerHTML = 'הקובץ <bdi>G&amp;L_Expanded.xlsx</bdi> או CSV';
+    }
     // Delete all: named confirmation first (Cancel focused), then an undo toast.
     const cd = $('#confirm-dialog');
     $('#clear-all').addEventListener('click', () => {

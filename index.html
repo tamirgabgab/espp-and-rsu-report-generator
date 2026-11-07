@@ -14,6 +14,18 @@
       <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
     </header>
 
+    <!-- Report parameters + export (Pattern 9, report runner). Hidden until there is a lot. -->
+    <section id="toolbar" class="toolbar" aria-label="שנת מס והורדה" hidden>
+      <div id="year-filter" class="chips" role="radiogroup" aria-label="סינון לפי שנת מס" hidden></div>
+      <div class="toolbar-actions">
+        <button id="dl-pdf" class="btn btn-primary" type="button">הורדת PDF</button>
+        <button id="preview-pdf" class="btn" type="button">צפייה ב‑PDF</button>
+        <button id="dl-xlsx" class="btn" type="button">הורדת Excel</button>
+      </div>
+      <p class="toolbar-scope" id="export-scope"></p>
+      <div id="export-msg" class="msg" role="status" aria-live="polite"></div>
+    </section>
+
     <!-- Result first: headline numbers (hidden until there is at least one valid lot) -->
     <section id="hero" class="hero" aria-label="תוצאה" hidden>
       <div class="tile">
@@ -68,11 +80,10 @@
       <div class="card-head">
         <h2 id="lots-title" tabindex="-1"><span class="step">2</span> עסקאות</h2>
         <div class="card-tools">
-          <div id="year-filter" class="chips" role="radiogroup" aria-label="סינון לפי שנת מס" hidden></div>
           <button id="clear-all" class="btn btn-quiet btn-sm" type="button" hidden>מחיקת הכל</button>
         </div>
       </div>
-      <p class="hint" id="lots-hint">כל שורה היא lot: מניות שנקנו בתאריך אחד ונמכרו בתאריך אחד. השערים נלקחים מהשער היציג של בנק ישראל. בלחיצה על "איך חושב?" רואים את החישוב המלא ואת בקרת השערים.</p>
+      <p class="hint" id="lots-hint">כל שורה היא lot: מניות שנקנו בתאריך אחד ונמכרו בתאריך אחד. השערים נלקחים מהשער היציג של בנק ישראל. בלחיצה על "הצגת החישוב" רואים את החישוב המלא ואת בקרת השערים.</p>
       <div class="lots-desktop">
         <table class="lots-table">
           <thead>
@@ -89,7 +100,11 @@
       <div class="lots-mobile" id="lots-cards"></div>
       <div id="empty-state" class="empty">
         <p class="empty-title">עוד אין עסקאות</p>
-        <p>כדי להתחיל, מעלים את הקובץ מ‑E*Trade למעלה, מוסיפים עסקה ידנית, או טוענים את הדוגמה.</p>
+        <p>מעלים את קובץ Gains &amp; Losses מ‑E*Trade ומקבלים טופס 1399 ממולא לכל מכירה, עם חישוב המס.</p>
+        <div class="actions actions-center">
+          <button id="empty-upload" class="btn btn-primary" type="button">העלאת קובץ מ‑E*Trade</button>
+          <button id="empty-example" class="btn" type="button">טעינת דוגמה</button>
+        </div>
       </div>
     </section>
 
@@ -116,7 +131,7 @@
 
     <!-- 4. Details + download -->
     <section class="card" id="export" aria-labelledby="export-title">
-      <h2 id="export-title"><span class="step">4</span> פרטים לטופס והורדה</h2>
+      <h2 id="export-title"><span class="step">4</span> פרטים לטופס</h2>
       <p class="hint">השם ושאר הפרטים נשמרים רק בדפדפן הזה. מספר תעודת הזהות לא נשמר בכלל, וצריך להקליד אותו בכל פעם שמורידים טופס.</p>
       <div class="grid">
         <div class="field">
@@ -151,13 +166,7 @@
           <input id="p-102" type="checkbox"> מניות לפי סעיף 102 (ברירת מחדל לכל העסקאות)
         </label>
       </div>
-      <div class="actions">
-        <button id="dl-pdf" class="btn btn-primary" type="button">הורדת PDF</button>
-        <button id="preview-pdf" class="btn" type="button">תצוגה מקדימה</button>
-        <button id="dl-xlsx" class="btn" type="button">הורדת Excel</button>
-      </div>
-      <p class="hint" id="export-scope"></p>
-      <div id="export-msg" class="msg" role="status" aria-live="polite"></div>
+      <p class="hint">אחרי מילוי הפרטים מורידים את הטופס מהכפתור "הורדת PDF" בראש העמוד או בשורה התחתונה.</p>
     </section>
 
     <footer class="foot">
@@ -184,9 +193,17 @@
         <button type="button" class="icon-btn" data-close aria-label="סגירה" data-tip="סגירה · Esc">×</button>
       </header>
       <div class="drawer-body">
+        <div id="draft-banner" class="draft-banner" role="status" hidden>
+          <span id="draft-text"></span>
+          <span class="draft-actions">
+            <button type="button" class="btn btn-sm" id="draft-restore">המשך מהטיוטה</button>
+            <button type="button" class="btn btn-sm btn-quiet" id="draft-discard">מחיקת הטיוטה</button>
+          </span>
+        </div>
+        <p class="hint form-legend">שדות עם <span class="req" aria-hidden="true">*</span> הם חובה.</p>
         <div class="grid grid-2">
           <div class="field">
-            <label for="f-symbol">סימול</label>
+            <label for="f-symbol">סימול <small>(לא חובה)</small></label>
             <input id="f-symbol" name="symbol" type="text" dir="ltr" autocapitalize="characters" placeholder="QCOM">
           </div>
           <div class="field">
@@ -196,41 +213,41 @@
             </select>
           </div>
           <div class="field">
-            <label for="f-qty">כמות מניות</label>
+            <label for="f-qty">כמות מניות <small>(לא חובה)</small></label>
             <input id="f-qty" name="qty" type="number" inputmode="decimal" step="any" min="0">
           </div>
           <label class="check"><input id="f-102" name="sec102" type="checkbox"> סעיף 102</label>
           <div class="field">
-            <label for="f-dateAcquired">תאריך רכישה</label>
+            <label for="f-dateAcquired">תאריך רכישה <span class="req" aria-hidden="true">*</span></label>
             <input id="f-dateAcquired" name="dateAcquired" type="date" required aria-describedby="e-dateAcquired">
             <p class="field-error" id="e-dateAcquired"></p>
           </div>
           <div class="field">
-            <label for="f-dateSold">תאריך מכירה</label>
+            <label for="f-dateSold">תאריך מכירה <span class="req" aria-hidden="true">*</span></label>
             <input id="f-dateSold" name="dateSold" type="date" required aria-describedby="e-dateSold">
             <p class="field-error" id="e-dateSold"></p>
           </div>
           <div class="field">
-            <label for="f-proceedsUsd">תמורה ($)</label>
+            <label for="f-proceedsUsd">תמורה ($) <span class="req" aria-hidden="true">*</span></label>
             <input id="f-proceedsUsd" name="proceedsUsd" type="number" inputmode="decimal" step="0.01" min="0" required aria-describedby="e-proceedsUsd">
             <p class="field-error" id="e-proceedsUsd"></p>
           </div>
           <div class="field">
-            <label for="f-costUsd">עלות ($) <small>Adjusted Cost Basis</small></label>
+            <label for="f-costUsd">עלות ($) <span class="req" aria-hidden="true">*</span> <small>Adjusted Cost Basis</small></label>
             <input id="f-costUsd" name="costUsd" type="number" inputmode="decimal" step="0.01" min="0" required aria-describedby="e-costUsd">
             <p class="field-error" id="e-costUsd"></p>
           </div>
           <div class="field">
-            <label for="f-feesUsd">עמלות ($) <small>אם לא נוכו מהתמורה</small></label>
+            <label for="f-feesUsd">עמלות ($) <small>(לא חובה) · רק אם לא נוכו מהתמורה</small></label>
             <input id="f-feesUsd" name="feesUsd" type="number" inputmode="decimal" step="0.01" min="0">
           </div>
           <div class="field">
-            <label for="f-timeSold">שעת מכירה <small>שעון ניו יורק, לא חובה</small></label>
+            <label for="f-timeSold">שעת מכירה <small>(לא חובה) · שעון ניו יורק</small></label>
             <input id="f-timeSold" name="timeSold" type="time">
           </div>
         </div>
         <div class="field">
-          <label for="f-paste">הדבקה מ‑Order Details <small>מזהה תאריך ושעה אוטומטית</small></label>
+          <label for="f-paste">הדבקה מ‑Order Details <small>(לא חובה) · ממלא תאריך ושעה אוטומטית</small></label>
           <textarea id="f-paste" rows="2" dir="ltr" placeholder="Executed 05/11/2026 10:35:12 AM ET"></textarea>
           <p class="field-note" id="f-paste-note" aria-live="polite"></p>
         </div>

@@ -42,7 +42,7 @@ one has a status badge:
 - **⚠ שער:** ECB or Yahoo deviates unusually from the Bank of Israel rate
   (above 1% / 1.5%). Check the rate on the Bank of Israel website.
 
-**"איך חושב?"** (how was it calculated?) opens a panel with:
+**"הצגת החישוב"** (show the calculation) opens a panel with:
 - every step of the calculation. Each step shows the general formula and your
   numbers substituted into it, with the rate date used;
 - which case of Circular 10/2025 applies (for example "gain, shekel
@@ -52,13 +52,18 @@ one has a status badge:
 - the market rate at the sale minute, if you entered a sale time. This is
   information only and never goes on the form.
 
-The **pencil** opens the edit drawer:
+The **pencil** opens the edit drawer. Required fields are marked with *, and
+optional ones say (לא חובה):
 - missing or invalid fields show an error right under the field;
 - **"הדבקה מ‑Order Details":** paste the execution line from E*Trade (for
   example `Executed 05/11/2026 10:35:12 AM ET`), and the sale date and time are
   filled in automatically;
 - **"שערים ידניים (מתקדם)"** (manual rates, advanced): override the rates only
-  if you have a reason to.
+  if you have a reason to;
+- **drafts:** if you close the drawer without saving, what you typed is kept as
+  a draft. The next time you open the same lot, you can choose "המשך מהטיוטה"
+  (continue from the draft) or "מחיקת הטיוטה" (discard the draft). The draft
+  never contains your ID number.
 
 The **bin** deletes a lot right away. A message with **"ביטול"** (undo) lets
 you restore it for a few seconds. "מחיקת הכל" (delete all) first asks for

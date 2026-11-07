@@ -31,11 +31,12 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
    the page. You can also click **"טעינת דוגמה"** (load example) to try it out.
 3. **Check the headline numbers.** Real gain, estimated tax and the next
    advance payment appear at the top right away.
-4. **Review each lot.** Open **"איך חושב?"** (how was it calculated?) to see
+4. **Review each lot.** Open **"הצגת החישוב"** (show the calculation) to see
    the formula with your numbers and the rate cross-check. Fix anything marked
    ⚠ with the edit button.
-5. **Download.** Enter your name and ID number, preview the PDF, then download
-   it (forms + summary) and/or the Excel file.
+5. **Download.** Enter your name and ID number in step 4, then use the buttons
+   at the top of the page (or the bottom bar on phones) to view or download the
+   PDF (forms + summary) and the Excel file.
 
 The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 

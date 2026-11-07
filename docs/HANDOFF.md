@@ -232,6 +232,34 @@ A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
   over 200ms ease-out, and only when reduced motion is off.
 - **Chart:** labels at 12px.
 
+## Done (session 1, UX audit, priority 3: flow and copy)
+
+- **Report-runner layout (Pattern 9):** a toolbar under the page heading holds
+  the year chips and the export buttons (PDF primary, "צפייה ב‑PDF", Excel),
+  plus the export scope and status messages.
+  - On narrow screens the PDF button lives only in the sticky bar.
+  - Step 4 is now personal details only.
+  - The toolbar is hidden while the list is empty.
+- **Empty state:** has CTAs ("העלאת קובץ מ‑E*Trade" primary, "טעינת דוגמה").
+- **Touch devices:** the drop zone says "בחירת קובץ" instead of "גוררים",
+  detected with `(hover: none) and (pointer: coarse)`.
+- **Copy:**
+  - "הצגת החישוב" / "הסתרת החישוב" (chosen by the user);
+  - "צפייה ב‑PDF";
+  - the next-advance tile shows "אין לתשלום" instead of "0 ₪".
+- **Edit drawer:**
+  - required fields marked *, optional ones "(לא חובה)";
+  - a draft auto-save under `f1399.draft` keeps lot fields only, never the ID.
+    It is written 300ms after input and on close without saving, and cleared
+    on save. Reopening the same lot (or "new") offers "המשך מהטיוטה" or
+    "מחיקת הטיוטה".
+  - The dialog `close` event is async, so the `savingLot` flag is reset inside
+    the handler.
+- **Loaders:**
+  - a 100ms delay before showing "מכין את ה‑PDF…" and the intraday "loading"
+    text;
+  - the PDF preview shows a static A4 skeleton (no shimmer) until pages render.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
