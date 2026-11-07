@@ -16,6 +16,10 @@
 - Only the BOI rate goes on the form. ECB / Yahoo daily rates are a cross-check, and Yahoo
   intraday bars (data/rates/intraday/) show the rate at the sale time for information only.
   All sources are refreshed weekly by .github/workflows/update-rates.yml.
+- Section 102 (trustee, capital track) for ESPP/RSU is in Core.computeLot102: work income =
+  min(value, proceeds) − paid (ESPP value = FMV at purchase, RSU value = 30-trading-day average
+  before the grant, from data/stocks/), capital part computed REAL like other lots (user decision).
+  The sale simulator (src/js/sim.js) reuses the same functions.
 - Layout: app code in src/, data in data/rates/, maintenance scripts in tools/, docs in docs/.
   index.html must stay at the repo root (GitHub Pages serves main / root).
 - Never commit personal data (ID number, real transaction files). Profile details (name etc.) live

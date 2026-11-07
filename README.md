@@ -19,6 +19,13 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
 - **Step-by-step explanation.** Every lot shows the general formula with your
   own numbers substituted in. A built-in explainer also covers capital-gains tax
   vs. marginal (salary) tax.
+- **Section 102 with a trustee** (ESPP and RSU): the gain is split into work
+  income (marginal tax, estimated) and a capital gain (25%). RSU use the
+  average price of the 30 trading days before the grant, computed
+  automatically.
+- **Sale simulator:** enter the shares you still hold and see the tax and the
+  net amount of a sale today, and how much waiting for the end of the 24-month
+  trustee period would save.
 - **Optional rate at the exact sale time** (minute / hour), for your
   information only.
 - **One-click package for your accountant:** a ZIP with the PDF, the Excel
@@ -60,15 +67,16 @@ The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 | Path | Contents |
 |---|---|
 | `index.html` | The app's single page. It stays at the root because GitHub Pages serves from there. |
-| `src/js/` | App code: `core.js` (calculation logic), `pdf1399.js` (PDF form filling), `chart.js`, `app.js` (UI) |
+| `src/js/` | App code: `core.js` (calculation logic), `pdf1399.js` (PDF form filling), `chart.js`, `app.js` (UI), `sim.js` (sale simulator) |
 | `src/css/` | Styles (light and dark) |
 | `assets/forms/` | Official blank form 1399 (י), 2025 edition |
 | `assets/fonts/` | Hebrew font embedded in the PDF, with its license |
 | `data/rates/daily/` | Daily USD/ILS rates: Bank of Israel, ECB and Yahoo (`.json`, plus `.js` for the browser) |
 | `data/rates/intraday/` | Yahoo 1-minute (by month) and 1-hour (by year) rates |
+| `data/stocks/` | Daily closes of the employer's stock (QCOM), for the RSU 30-day average and the simulator |
 | `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS, pdf.js for the preview, JSZip for the package) and their licenses |
 | `assets/icons/`, `manifest.webmanifest` | App icons and the web-app manifest (home-screen install) |
-| `tools/` | `update_rates.py`, which downloads all rate sources |
+| `tools/` | `update_rates.py`, which downloads all rate sources and the stock prices |
 | `tests/` | Unit tests and a sample PDF renderer |
 | `docs/` | Documentation |
 | `.github/workflows/` | Weekly rate update and tests on every push |

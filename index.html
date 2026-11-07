@@ -37,7 +37,13 @@
         </div>
       </div>
       <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
+      <div class="view-tabs" role="tablist" aria-label="תצוגה">
+        <button type="button" role="tab" id="tab-report" aria-controls="view-report" aria-selected="true" tabindex="0">דוח מכירות</button>
+        <button type="button" role="tab" id="tab-sim" aria-controls="view-sim" aria-selected="false" tabindex="-1">סימולטור מכירה</button>
+      </div>
     </header>
+
+    <div id="view-report" role="tabpanel" aria-labelledby="tab-report">
 
     <!-- Report parameters + export (Pattern 9, report runner). Hidden until there is a lot. -->
     <section id="toolbar" class="toolbar" aria-label="שנת מס והורדה" hidden>
@@ -195,11 +201,92 @@
           <input id="p-date" type="date">
         </div>
         <label class="check">
-          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 (ברירת מחדל לכל העסקאות)
+          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 עם נאמן (ברירת מחדל לכל העסקאות)
         </label>
       </div>
+      <h3 class="sub-title">מס על הכנסת העבודה (מסלול 102)</h3>
+      <div class="grid work-settings">
+        <div class="field">
+          <label for="p-marginal">מס שולי משוער (%)</label>
+          <input id="p-marginal" data-work="marginalRate" type="number" inputmode="decimal" step="1" min="0" max="60">
+        </div>
+        <label class="check"><input id="p-ni-inc" data-work="includeNi" type="checkbox"> כולל ביטוח לאומי ומס בריאות</label>
+        <div class="field">
+          <label for="p-ni">ביטוח לאומי ובריאות (%)</label>
+          <input id="p-ni" data-work="niRate" type="number" inputmode="decimal" step="0.5" min="0" max="20">
+        </div>
+      </div>
+      <p class="hint">במסלול 102 החלק של ההטבה (ההנחה ב‑ESPP, ממוצע 30 הימים ב‑RSU) ממוסה כהכנסת עבודה, והנאמן מנכה את המס. הכלי מעריך את המס הזה לפי השיעור שכאן, לבקרה בלבד. הוא לא נכנס לטופס 1399.</p>
       <p class="hint">אחרי מילוי הפרטים מורידים את הטופס מהכפתור "הורדת PDF" בראש העמוד או בשורה התחתונה.</p>
     </section>
+
+    </div>
+
+    <!-- Sale simulator: what tax would a sale of my unsold shares cost? -->
+    <div id="view-sim" role="tabpanel" aria-labelledby="tab-sim" hidden>
+      <section class="card" id="sim-holdings" aria-labelledby="sim-h-title">
+        <div class="card-head">
+          <h2 id="sim-h-title" tabindex="-1"><span class="step">1</span> המניות שעוד לא מכרתי</h2>
+          <div class="card-tools">
+            <button id="sim-clear" class="btn btn-quiet btn-sm" type="button" hidden>מחיקת הכל</button>
+          </div>
+        </div>
+        <p class="hint">כל שורה היא מנה: מניות ESPP מרכישה אחת, או מניות RSU ממענק אחד. הנתונים נשמרים רק בדפדפן הזה.</p>
+        <div class="actions">
+          <button id="sim-add" class="btn" type="button">הוספת מנה ידנית</button>
+          <button id="sim-import" class="btn" type="button">ייבוא קובץ Holdings מ‑E*Trade</button>
+          <input id="sim-file" type="file" accept=".xlsx,.xls,.csv" class="visually-hidden" tabindex="-1" aria-hidden="true">
+          <button id="sim-example" class="btn btn-quiet" type="button">טעינת דוגמה</button>
+        </div>
+        <details class="howto">
+          <summary>איך מורידים את קובץ ה‑Holdings מ‑E*Trade?</summary>
+          <ol>
+            <li>ב‑E*Trade נכנסים ל‑<b>Stock Plan</b>, משם ל‑<b>Holdings</b> ואז לתצוגה <b>By Benefit Type</b>.</li>
+            <li>לוחצים <b>Download</b> ואז <b>Download Expanded</b>, ומעלים כאן את הקובץ.</li>
+            <li>הייבוא נבנה בלי קובץ אמיתי לדוגמה, ולכן כדאי לעבור על כל שורה ולתקן בעריכה מה שחסר (תאריך הענקה ל‑RSU, מחיר רכישה ל‑ESPP).</li>
+          </ol>
+        </details>
+        <div id="sim-msg" class="msg" role="status" aria-live="polite"></div>
+        <div id="sim-list"></div>
+        <div id="sim-empty" class="empty">
+          <p class="empty-title">עוד אין מניות בסימולטור</p>
+          <p>מוסיפים את המניות שעוד לא נמכרו, ורואים כמה מס תשלם אם תמכור אותן עכשיו, ומתי כדאי לחכות.</p>
+        </div>
+      </section>
+
+      <section class="card" id="sim-params" aria-labelledby="sim-p-title">
+        <h2 id="sim-p-title"><span class="step">2</span> הנחות למכירה</h2>
+        <div class="grid">
+          <div class="field">
+            <label for="sim-date">תאריך מכירה</label>
+            <input id="sim-date" type="date">
+          </div>
+          <div class="field">
+            <label for="sim-rate">שער דולר ביום המכירה</label>
+            <input id="sim-rate" type="number" inputmode="decimal" step="0.001" min="0">
+            <p class="field-note" id="sim-rate-note"></p>
+          </div>
+          <div id="sim-prices" class="sim-prices"></div>
+        </div>
+        <div class="grid work-settings">
+          <div class="field">
+            <label for="sim-marginal">מס שולי משוער (%)</label>
+            <input id="sim-marginal" data-work="marginalRate" type="number" inputmode="decimal" step="1" min="0" max="60">
+          </div>
+          <label class="check"><input id="sim-ni-inc" data-work="includeNi" type="checkbox"> כולל ביטוח לאומי ומס בריאות</label>
+          <div class="field">
+            <label for="sim-ni">ביטוח לאומי ובריאות (%)</label>
+            <input id="sim-ni" data-work="niRate" type="number" inputmode="decimal" step="0.5" min="0" max="20">
+          </div>
+        </div>
+        <p class="hint">המס השולי חל על חלק הכנסת העבודה במסלול 102. בהכנסה מעל תקרת הביטוח הלאומי השיעור נמוך יותר, וכדאי להוריד את הסימון.</p>
+      </section>
+
+      <section class="card" id="sim-result" aria-labelledby="sim-r-title">
+        <h2 id="sim-r-title"><span class="step">3</span> מה יקרה אם אמכור</h2>
+        <div id="sim-out"><p class="hint">התוצאה תופיע אחרי שתוסיף לפחות מנה אחת.</p></div>
+      </section>
+    </div>
 
     <footer class="foot">
       <p><button id="install-app" class="btn btn-sm" type="button" hidden>התקנה כאפליקציה</button></p>
@@ -249,9 +336,19 @@
             <label for="f-qty">כמות מניות <small>(לא חובה)</small></label>
             <input id="f-qty" name="qty" type="number" inputmode="decimal" step="any" min="0">
           </div>
-          <label class="check"><input id="f-102" name="sec102" type="checkbox"> סעיף 102</label>
+          <label class="check"><input id="f-102" name="sec102" type="checkbox"> סעיף 102 עם נאמן</label>
+          <div class="field" id="w-grantDate" hidden>
+            <label for="f-grantDate">תאריך הענקה <bdi>(Grant Date)</bdi> <span class="req" aria-hidden="true">*</span></label>
+            <input id="f-grantDate" name="grantDate" type="date" aria-describedby="e-grantDate">
+            <p class="field-error" id="e-grantDate"></p>
+          </div>
+          <div class="field" id="w-avg30" hidden>
+            <label for="f-avg30">ממוצע 30 ימי מסחר לפני ההענקה ($ למניה) <small>(לא חובה)</small></label>
+            <input id="f-avg30" name="avg30" type="number" inputmode="decimal" step="0.0001" min="0">
+            <p class="field-note" id="f-avg30-note"></p>
+          </div>
           <div class="field">
-            <label for="f-dateAcquired">תאריך רכישה <span class="req" aria-hidden="true">*</span></label>
+            <label for="f-dateAcquired" id="l-dateAcquired">תאריך רכישה <span class="req" aria-hidden="true">*</span></label>
             <input id="f-dateAcquired" name="dateAcquired" type="date" required aria-describedby="e-dateAcquired">
             <p class="field-error" id="e-dateAcquired"></p>
           </div>
@@ -266,9 +363,17 @@
             <p class="field-error" id="e-proceedsUsd"></p>
           </div>
           <div class="field">
-            <label for="f-costUsd">עלות ($) <span class="req" aria-hidden="true">*</span> <small>Adjusted Cost Basis</small></label>
+            <label for="f-costUsd" id="l-costUsd">עלות ($) <span class="req" aria-hidden="true">*</span> <small>Adjusted Cost Basis</small></label>
             <input id="f-costUsd" name="costUsd" type="number" inputmode="decimal" step="0.01" min="0" required aria-describedby="e-costUsd">
             <p class="field-error" id="e-costUsd"></p>
+          </div>
+          <div class="field" id="w-paidUsd">
+            <label for="f-paidUsd">סכום ששילמת ($) <small>(לא חובה) · Acquisition Cost, מחיר הרכישה המוזל × כמות</small></label>
+            <input id="f-paidUsd" name="paidUsd" type="number" inputmode="decimal" step="0.01" min="0">
+          </div>
+          <div class="field" id="w-withheldIls" hidden>
+            <label for="f-withheldIls">מס שהנאמן ניכה (₪) <small>(לא חובה) · להשוואה</small></label>
+            <input id="f-withheldIls" name="withheldIls" type="number" inputmode="decimal" step="1" min="0">
           </div>
           <div class="field">
             <label for="f-feesUsd">עמלות ($) <small>(לא חובה) · רק אם לא נוכו מהתמורה</small></label>
@@ -301,6 +406,61 @@
       </div>
       <footer class="drawer-foot">
         <button type="submit" class="btn btn-primary" id="lot-save">שמירת העסקה</button>
+        <button type="button" class="btn" data-close>ביטול</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Edit a holding (simulator) -->
+  <dialog id="holding-dialog" class="drawer" aria-labelledby="holding-title">
+    <form id="holding-form" method="dialog" novalidate>
+      <header class="drawer-head">
+        <h2 id="holding-title">מנה בסימולטור</h2>
+        <button type="button" class="icon-btn" data-close aria-label="סגירה" data-tip="סגירה · Esc">×</button>
+      </header>
+      <div class="drawer-body">
+        <p class="hint form-legend">שדות עם <span class="req" aria-hidden="true">*</span> הם חובה.</p>
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="h-symbol">סימול <span class="req" aria-hidden="true">*</span></label>
+            <input id="h-symbol" name="symbol" type="text" dir="ltr" autocapitalize="characters" placeholder="QCOM" aria-describedby="e-h-symbol">
+            <p class="field-error" id="e-h-symbol"></p>
+          </div>
+          <div class="field">
+            <label for="h-plan">תוכנית</label>
+            <select id="h-plan" name="planType"><option>ESPP</option><option>RSU</option></select>
+          </div>
+          <div class="field">
+            <label for="h-qty">כמות מניות <span class="req" aria-hidden="true">*</span></label>
+            <input id="h-qty" name="qty" type="number" inputmode="decimal" step="any" min="0" aria-describedby="e-h-qty">
+            <p class="field-error" id="e-h-qty"></p>
+          </div>
+          <label class="check"><input id="h-102" name="sec102" type="checkbox"> סעיף 102 עם נאמן</label>
+          <div class="field" id="hw-grantDate">
+            <label for="h-grantDate">תאריך הענקה <bdi>(Grant Date)</bdi></label>
+            <input id="h-grantDate" name="grantDate" type="date">
+          </div>
+          <div class="field">
+            <label for="h-dateAcquired" id="hl-dateAcquired">תאריך רכישה</label>
+            <input id="h-dateAcquired" name="dateAcquired" type="date">
+          </div>
+          <div class="field">
+            <label for="h-costPerShare" id="hl-costPerShare">שווי ביום הרכישה ($ למניה)</label>
+            <input id="h-costPerShare" name="costPerShare" type="number" inputmode="decimal" step="0.0001" min="0">
+          </div>
+          <div class="field" id="hw-paidPerShare">
+            <label for="h-paidPerShare">מחיר ששילמת ($ למניה)</label>
+            <input id="h-paidPerShare" name="paidPerShare" type="number" inputmode="decimal" step="0.0001" min="0">
+          </div>
+          <div class="field" id="hw-avg30">
+            <label for="h-avg30">ממוצע 30 ימי מסחר לפני ההענקה ($) <small>(לא חובה)</small></label>
+            <input id="h-avg30" name="avg30" type="number" inputmode="decimal" step="0.0001" min="0">
+            <p class="field-note" id="h-avg30-note"></p>
+          </div>
+        </div>
+      </div>
+      <footer class="drawer-foot">
+        <button type="submit" class="btn btn-primary">שמירת המנה</button>
         <button type="button" class="btn" data-close>ביטול</button>
       </footer>
     </form>
@@ -347,9 +507,11 @@
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="data/rates/daily/boi.js"></script>
   <script src="data/rates/daily/secondary.js"></script>
+  <script src="data/stocks/prices.js"></script>
   <script src="src/js/core.js"></script>
   <script src="src/js/pdf1399.js"></script>
   <script src="src/js/chart.js"></script>
   <script src="src/js/app.js"></script>
+  <script src="src/js/sim.js"></script>
 </body>
 </html>

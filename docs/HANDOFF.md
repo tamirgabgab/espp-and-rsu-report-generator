@@ -307,6 +307,83 @@ Decided with the user before building.
 - An "התקנה כאפליקציה" button appears in the footer only when the browser
   fires `beforeinstallprompt`.
 
+## Done (session 2, 2026-11-07): RSU, section 102 and the sale simulator
+
+### Decisions taken with the user
+- Support **both** tracks for RSU: section 102 capital-gains track with a
+  trustee, and the regular track (benefit taxed through payroll).
+- The user's **ESPP is also 102 with a trustee**.
+- 102 lots **also get form 1399** (for the capital part).
+- The capital part of a 102 lot is computed **real** (Circular 10/2025), not
+  nominal as trustees usually do. There is no official ruling either way.
+- ESPP work income = **the discount** (market price on the purchase date −
+  price paid).
+- Stock prices: **automatic** (Yahoo daily closes, weekly) **plus manual**
+  override.
+- Marginal tax: a rate field (default 47%) plus a national insurance and health
+  checkbox (default 12%). Estimate only.
+- Simulator holdings: **manual entry plus file import**.
+
+### Research (secondary sources only; the official sites were not reachable)
+- 102 capital track, listed company: the benefit is the average of the 30
+  trading days before the allocation, taxed as work income; the rest is a
+  capital gain at 25%. A sale before 24 months leaves the track (all work
+  income). RSU are treated like options for 102 (tax ruling 139/06).
+- ESPP 102: the discount is work income (marginal + national insurance +
+  health); the gain above the purchase-date value is a capital gain.
+- Real vs. nominal for the 102 capital part is disputed: nominal is the common
+  trustee practice.
+- Form 1399 itself: note 3 ("מניות לפי 102", 25% in the capital track), note
+  12.5 ("for 102 options, the payment and the allocation date are the cost"),
+  transaction code 53 for 102 capital-track sales (transmitter use only, not
+  filled).
+
+### Built
+- `Core.computeLot102`:
+  - `W = max(0, min(V, P − F) − Cp)`;
+  - capital cost = `Cp + W` at the allocation date, computed real via `computeLot`;
+  - work income converted at the sale-date rate;
+  - an early sale (before allocation + 24 months + 1 day) is work income only,
+    with `noForm: true`.
+- `Core.workTax`, `Core.avgCloseBefore`, `Core.lastClose`, `Core.addMonths`,
+  `Core.unlockDate`, `Core.allocationDate`.
+- `summarize()` adds `workIls` per period and skips the capital fields of
+  `noForm` lots.
+- Stock prices:
+  - `tools/update_rates.py --sources stocks` → `data/stocks/<T>.json` and
+    `prices.js`, from `data/stocks/tickers.json` (`["QCOM"]`);
+  - the weekly workflow runs it too.
+- E*Trade G&L import reads:
+  - *Grant Date* (RSU);
+  - *Acquisition Cost* / *Purchase Price* (ESPP paid);
+  - *Purchase Date FMV*.
+- Report UI:
+  - the lot editor shows grant date, 30-day average (auto placeholder), amount
+    paid and trustee withholding, depending on plan and track;
+  - the panel has a "סעיף 102" block with every formula and number;
+  - the table and cards show the work-income part, with a "מס שולי" badge for
+    early sales;
+  - the summary and hero show the work income and the estimated marginal tax;
+  - the PDF uses the capital lot (cost and date of allocation), and early sales
+    are excluded from it;
+  - Excel adds track, work income, marginal tax, trustee withholding and a note;
+  - `explanation.txt` describes 102.
+- Simulator (`src/js/sim.js`, tab "סימולטור מכירה"):
+  - holdings in `f1399.holdings`, a holdings drawer, and an E*Trade holdings
+    import (`Core.parseHoldingsRows`, **not verified on a real file**);
+  - assumptions: date, rate, price per ticker and marginal settings;
+  - per-holding results with the quantity to sell, plus the same sale on the
+    unlock date for early 102 holdings;
+  - totals with loss offset against the report's sales of the same year
+    (`App.realizedByYear`).
+- Backup:
+  - includes the holdings and the marginal settings;
+  - stays version 1 (additive);
+  - still never includes the ID.
+- Shared named confirmation: `confirmDestructive()`. Views use tabs (`role=tablist`)
+  remembered in `f1399.view`, and `#sim` in the URL opens the simulator.
+- Tests: 31 unit tests (9 new).
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -327,9 +404,13 @@ Decided with the user before building.
 4. **Offline mode (optional):** the app installs to the home screen but
    still needs a network connection. Offline use would need a service worker
    that caches the app shell and the rate data.
-5. **Section 102 trustee sales.** If the trustee already withheld tax, a 1399
-   may not be needed at all. Consider a per-row "tax withheld" field that is
-   excluded from the advance-payment totals.
+5. **Section 102 follow-ups:**
+   - verify the holdings import and the G&L RSU columns against real E*Trade files;
+   - confirm with the accountant: real vs. nominal, the ESPP work-income
+     definition, and the 24-month start date;
+   - the tax the trustee withheld is only compared per lot; it is not deducted
+     from the advance-payment totals;
+   - ask the accountant whether 102 sales belong in the semi-annual advance at all.
 6. **Surtax.** The 3% + 2% surtax on capital income above ₪721,560 is not
    calculated; only a flat 25% is. Possibly add a warning when the yearly gain is large.
 7. **Other currencies.** Only USD is supported.

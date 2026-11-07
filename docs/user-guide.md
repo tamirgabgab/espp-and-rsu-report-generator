@@ -115,7 +115,10 @@ Fill in:
 - *שייכות* (relationship);
 - the asset location;
 - the date on the form;
-- the default for section 102.
+- the default for section 102 with a trustee (see section 9);
+- the estimated marginal tax rate for the work-income part of 102 lots
+  (default 47%, plus 12% national insurance and health; untick it if your
+  salary is above the national-insurance ceiling).
 
 Everything except the ID number is saved only in your browser. The ID number
 is never saved: type it again each time you download a form.
@@ -131,7 +134,7 @@ Then:
 The chart shows the USD/ILS representative rate since 2020, with your purchase
 dates (green) and sale dates (orange) marked.
 
-## 7. Package for the accountant
+## 6. Package for the accountant
 
 **"הורדת חבילה לרואה החשבון"** (download the package for the accountant)
 creates one ZIP file with:
@@ -143,10 +146,10 @@ creates one ZIP file with:
   rate source, the calculation method and the assumptions;
 - `backup.json`: a backup that can be loaded back into the app.
 
-## 8. Backup and restore
+## 7. Backup and restore
 
-- **"שמירת גיבוי"** (save backup) downloads a `.json` file with your lots and
-  details. The ID number is **never** included.
+- **"שמירת גיבוי"** (save backup) downloads a `.json` file with your lots, your
+  simulator holdings and your details. The ID number is **never** included.
 - **"טעינת גיבוי"** (load backup) reads such a file, for example on another
   computer or phone:
   - if the list is empty, the lots are loaded right away;
@@ -156,7 +159,7 @@ creates one ZIP file with:
 
   Either way, an undo button appears for a few seconds.
 
-## 9. Install as an app
+## 8. Install as an app
 
 The app can be added to your home screen with its own icon. It still needs an
 internet connection to work.
@@ -165,6 +168,56 @@ internet connection to work.
   the bottom of the page when it appears, or menu ⋮ → "הוספה למסך הבית" (add to
   home screen).
 - **iPhone (Safari):** tap Share, then "הוסף למסך הבית" (add to home screen).
+
+## 9. RSU and section 102 with a trustee
+
+Mark a lot "סעיף 102 עם נאמן" (or keep the default from step 4 in the app, "פרטים לטופס"). For ESPP and
+RSU lots the app then splits the gain:
+- **work income**, taxed at your marginal rate and withheld by the trustee:
+  - ESPP: the discount, (market price on the purchase date − price paid) × qty.
+    Fill in "סכום ששילמת" (the *Acquisition Cost* column in E*Trade). It is
+    read from the G&L file when the column is there;
+  - RSU: the average closing price of the 30 trading days before the **grant
+    date** × qty. Fill in the grant date. The average is computed
+    automatically for QCOM, or you can type the one from the trustee's report;
+- **capital gain**, the rest, at 25%. It is computed as a real gain like any
+  other lot and goes on form 1399, with the allocation date and the "102" box.
+
+A sale **before 24 months** from the allocation (the grant for RSU, the
+purchase for ESPP) leaves the track: the whole gain is work income, and there
+is no form 1399 for it. It is marked "מס שולי" and appears in Excel.
+
+Optionally type the tax the trustee withheld ("מס שהנאמן ניכה"). The "הצגת
+החישוב" panel compares it with the estimate.
+
+The full rules and open points are in
+[tax-calculation.md](tax-calculation.md#section-102-capital-gains-track-with-a-trustee).
+
+## 10. Sale simulator
+
+The **"סימולטור מכירה"** (sale simulator) tab at the top estimates the tax on
+shares you have not sold yet.
+
+1. **Add your holdings:** "הוספת מנה ידנית" (add manually) for each ESPP
+   purchase or RSU grant, or import E*Trade's *Holdings → By Benefit Type →
+   Download Expanded* file. The import was built without a real sample file,
+   so check every row. "טעינת דוגמה" loads an example.
+2. **Set the assumptions:** the sale date, the USD rate (default: the latest
+   representative rate), the share price (default: the latest close) and the
+   marginal tax rate.
+3. **Read the result:** for each holding you see the proceeds, the work income
+   and its estimated tax (102), the real capital gain and its tax, and the net
+   amount. You can sell part of a holding by changing "כמות למכירה" (quantity
+   to sell).
+
+- **Totals:** the capital-gains tax is offset against the sales of the same
+  year that are already in the report.
+- **Waiting:** for a 102 holding still inside its 24 months, the simulator also
+  shows the result of selling on the first day after the period, at the same
+  price and rate, and how much that would save.
+
+Everything is an estimate: the future price and rate are unknown, and surtax
+is not computed.
 
 ## FAQ
 
@@ -176,8 +229,9 @@ here follow what the accountant asked for. See
 [tax-calculation.md](tax-calculation.md#reporting-obligations).
 
 **My plan is section 102 with a trustee. Do I need this?**
-If the trustee already withheld the tax, the sale may not need a 1399 at all.
-Ask your accountant.
+The trustee withholds the tax at the sale, so the sale may not need a 1399 at
+all. The app still prepares one for the capital part (as the accountant asked),
+and helps you check the trustee's numbers. See section 9.
 
 **Why is the rate different from the one I used by hand?**
 The app uses the Bank of Israel representative rate of the exact date. Check

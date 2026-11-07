@@ -198,3 +198,111 @@ test('merge skips exact duplicate lots', () => {
   assert.equal(r.skipped, 2);
   assert.equal(r.merged.length, 2);
 });
+
+// ------------------------------------------------------------ section 102, stock prices, simulator
+
+test('addMonths clamps to the end of the month', () => {
+  assert.equal(Core.addMonths('2024-01-31', 1), '2024-02-29');
+  assert.equal(Core.addMonths('2024-02-29', 24), '2026-02-28');
+  assert.equal(Core.unlockDate('2024-01-31'), '2026-02-01');
+});
+
+test('30-trading-day average uses only the days before the date', () => {
+  const prices = {};
+  for (let i = 1; i <= 40; i++) prices[Core.addDays('2025-01-01', i)] = i; // 2025-01-02 .. 2025-02-10
+  const a = Core.avgCloseBefore({ rates: prices }, '2025-02-01'); // days 1..30 are before 2025-02-01
+  assert.equal(a.count, 30);
+  assert.equal(a.avg, 15.5);
+  assert.equal(a.from, '2025-01-02');
+  assert.equal(a.to, '2025-01-31');
+  assert.equal(Core.avgCloseBefore({ rates: prices }, '2025-01-20'), null); // not enough history
+  assert.equal(Core.avgCloseBefore({ rates: prices }, '2026-01-01'), null); // beyond the data
+  assert.deepEqual(Core.lastClose({ rates: prices }), { price: 40, date: '2025-02-10' });
+});
+
+const rates102 = { '2024-01-31': 3.635, '2025-03-03': 3.6, '2026-05-11': 2.909 };
+
+test('102 ESPP: discount is work income, the rest is a real capital gain', () => {
+  const espp = { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, paidUsd: 2145.97, feesUsd: 0 };
+  const c = Core.computeLot102(espp, rates102);
+  const plain = Core.computeLot(espp, rates102);
+  assert.equal(c.ok, true);
+  assert.equal(c.early, false);
+  assert.equal(c.workUsd, 378.7);
+  assert.equal(c.workIls, Math.round(378.7 * 2.909));
+  assert.equal(c.real, plain.real); // capital part = the regular calculation from the market value
+  assert.equal(c.costDate, '2024-01-31');
+  // Unknown purchase price: no work part, capital part unchanged.
+  const u = Core.computeLot102({ ...espp, paidUsd: NaN }, rates102);
+  assert.equal(u.paidKnown, false);
+  assert.equal(u.workUsd, 0);
+  assert.equal(u.real, plain.real);
+});
+
+test('102 early sale: the whole gain is work income and there is no form', () => {
+  const c = Core.computeLot102({ planType: 'ESPP', qty: 10, dateAcquired: '2025-03-03', dateSold: '2026-05-11', proceedsUsd: 2000, costUsd: 1500, paidUsd: 1275, feesUsd: 0 }, rates102);
+  assert.equal(c.early, true);
+  assert.equal(c.noForm, true);
+  assert.equal(c.workUsd, 725);
+  assert.equal(c.real, 0);
+  const g = Core.summarize([{ lot: { dateSold: '2026-05-11' }, calc: c }]);
+  assert.equal(g[0].count, 0);
+  assert.equal(g[0].workIls, c.workIls);
+});
+
+test('102 RSU: the 30-day average splits work income and capital gain', () => {
+  const rsu = { symbol: 'X', planType: 'RSU', qty: 10, grantDate: '2024-01-31', dateAcquired: '2025-03-03', dateSold: '2026-05-11', proceedsUsd: 1000, costUsd: 900, feesUsd: 0, avg30: '60' };
+  const c = Core.computeLot102(rsu, rates102);
+  assert.equal(c.baseSource, 'manual');
+  assert.equal(c.workUsd, 600);
+  assert.equal(c.capCostUsd, 600);
+  assert.equal(c.buy.rate, 3.635); // cost dated at the grant (allocation)
+  const viaPrices = Core.computeLot102({ ...rsu, avg30: '' }, rates102, {}, { prices: { X: { rates: Object.fromEntries(Array.from({ length: 60 }, (_, i) => [Core.addDays('2023-12-01', i), 60])) } } });
+  assert.equal(viaPrices.baseSource, 'avg30');
+  assert.equal(viaPrices.workUsd, 600);
+  // Sold below the average: work income is capped at the proceeds, no capital gain.
+  const low = Core.computeLot102({ ...rsu, avg30: '120' }, rates102);
+  assert.equal(low.workUsd, 1000);
+  assert.equal(low.real, 0);
+  // Missing grant date is an issue.
+  assert.equal(Core.computeLot102({ ...rsu, grantDate: '' }, rates102).ok, false);
+});
+
+test('work tax estimate', () => {
+  assert.equal(Core.workTax(1000, { marginalRate: 47, niRate: 12, includeNi: true }), 590);
+  assert.equal(Core.workTax(1000, { marginalRate: 47, niRate: 12, includeNi: false }), 470);
+  assert.equal(Core.workTax(-5), 0);
+});
+
+test('simulator: early 102 sale also shows the sale on the unlock date', () => {
+  const h = { symbol: 'X', planType: 'ESPP', qty: 10, dateAcquired: '2025-03-03', costPerShare: 150, paidPerShare: 127.5, sec102: true };
+  const r = Core.simulateHolding(h, { price: 200, date: '2026-05-11', rate: 3, is102: true, rates: rates102, settings: { marginalRate: 47, includeNi: false } });
+  assert.equal(r.now.ok, true);
+  assert.equal(r.now.calc.early, true);
+  assert.equal(r.now.workTax, Core.roundILS(725 * 3 * 0.47));
+  assert.equal(r.later.calc.early, false);
+  assert.equal(r.later.calc.workUsd, 225);
+  assert.ok(r.later.net > r.now.net);
+});
+
+test('holdings import is tolerant of the E*Trade layout', () => {
+  const rows = [
+    ['Record Type', 'Symbol', 'Purchase Date', 'Purchase Price', 'Purchase Date FMV', 'Sellable Qty.'],
+    ['Purchase', 'QCOM', '01/31/2025', '126.23', '148.51', '17'],
+    ['Purchase', 'QCOM', '07/31/2025', '130', '160', '0'],
+    ['Totals', '', '', '', '', '17'],
+  ];
+  const r = Core.parseHoldingsRows(rows, 'ESPP');
+  assert.equal(r.holdings.length, 1);
+  assert.deepEqual([r.holdings[0].planType, r.holdings[0].dateAcquired, r.holdings[0].costPerShare, r.holdings[0].paidPerShare], ['ESPP', '2025-01-31', 148.51, 126.23]);
+});
+
+test('backup keeps the 102 fields and the holdings', () => {
+  const b = Core.makeBackup({ name: 'A', marginalRate: 35 }, [{ symbol: 'X', planType: 'RSU', grantDate: '2024-01-31', paidUsd: 0, avg30: '60', withheldIls: 1200 }], new Date(0), [{ symbol: 'x', planType: 'RSU', qty: 5, grantDate: '2025-01-01', costPerShare: NaN }]);
+  const back = Core.parseBackup(JSON.stringify(b));
+  assert.equal(back.lots[0].grantDate, '2024-01-31');
+  assert.equal(back.lots[0].withheldIls, 1200);
+  assert.equal(back.profile.marginalRate, 35);
+  assert.equal(back.holdings[0].symbol, 'X');
+  assert.ok(Number.isNaN(back.holdings[0].costPerShare));
+});

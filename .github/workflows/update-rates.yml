@@ -4,6 +4,8 @@ name: Update USD/ILS rates (weekly)
 #   - Bank of Israel representative rate (used on the form)
 #   - ECB reference rate and Yahoo Finance daily close (cross-check)
 #   - Yahoo Finance 1-minute and 60-minute bars (rate at the exact sale time)
+#   - Yahoo Finance daily closes of the tickers in data/stocks/tickers.json
+#     (RSU 30-day average and the sale simulator)
 # Yahoo keeps 1-minute bars for only 30 days, so this weekly run is what builds
 # the permanent minute archive (data/rates/intraday/minute/YYYY-MM.json).
 # The browser cannot call these APIs directly (CORS), so the app uses these files.

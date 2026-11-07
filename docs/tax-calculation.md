@@ -76,7 +76,7 @@ calculated?" panel.
 |---|---|---|---|
 | ESPP discount = (FMV on purchase date − price paid) × qty | Employment income | marginal brackets, 10%–47% plus surtax | through payroll |
 | RSU value at vest (no trustee) | Employment income | marginal | through payroll |
-| 102 capital-gains track: value up to the 30-trading-day average before the grant | Employment income | marginal | withheld by the trustee at sale |
+| 102 capital-gains track: the discount (ESPP) or the 30-trading-day average before the grant (RSU) | Employment income | marginal, plus national insurance and health | withheld by the trustee at sale |
 | Change in value after the purchase / vest (or above the 102 average) | **Capital gain** | **25%** flat (30% for a substantial shareholder) | this report and the advance payments |
 
 Because the benefit is already taxed as salary, the capital-gain cost is the
@@ -85,12 +85,60 @@ price actually paid would tax the discount twice.
 
 ## Cost basis
 
-The app uses E*Trade's **Adjusted Cost Basis**: the fair market value on the
-ESPP purchase date or the RSU vest date. This is correct when the ESPP discount
-or the RSU value was already taxed as employment income through payroll. For
-other arrangements (for example the 102 capital-gains track, where the work
-income is based on the 30-day average before the grant), edit the cost per row
-after checking with your accountant.
+**Regular track** (no trustee, the benefit was taxed through payroll): the
+app uses E*Trade's **Adjusted Cost Basis**, the fair market value on the ESPP
+purchase date or the RSU vest date.
+
+**Section 102 with a trustee:** see the next section. The cost of the capital
+part is what you paid plus the work-income part, dated at the allocation to
+the trustee.
+
+## Section 102, capital-gains track with a trustee
+
+Applies to lots marked "סעיף 102 עם נאמן" (the default in step 4) whose plan is
+ESPP or RSU. The tax on the benefit is not paid through payroll. The trustee
+withholds it at the sale, and the gain is split in two:
+
+| Symbol | Meaning |
+|---|---|
+| `V` | Value of the benefit. **ESPP:** the market value on the purchase date (Adjusted Cost Basis). **RSU:** the average closing price of the **30 trading days before the grant date** × qty. |
+| `Cp` | What you paid. ESPP: the discounted purchase price × qty (E*Trade's *Acquisition Cost*). RSU: 0. |
+| `P`, `F` | Proceeds and fees in USD |
+| `alloc` | The allocation to the trustee: the grant date for RSU, the purchase date for ESPP |
+
+- **Work income** (marginal tax): `W = min(V, P − F) − Cp`, never below 0. For
+  ESPP this is the discount, and for RSU the 30-day average. It is converted at
+  the **sale-date** representative rate, as the trustee does when it withholds.
+- **Capital gain** (25%): the rest. It is computed as a **real** gain with the
+  same Circular 10/2025 rules as any other lot, with cost `C = Cp + W` at the
+  **allocation-date** rate. On form 1399 the cost line shows `C` and the
+  allocation date (note 12.5 of the form), and the "102" box is checked.
+- **Holding period:** a sale before 24 months from the allocation leaves the
+  capital-gains track. The whole gain `P − F − Cp` is then work income, there is
+  no capital gain, and the lot gets no form 1399 (it appears in Excel only).
+  The app treats a sale as qualifying only from the day after the 24-month
+  anniversary, to be safe.
+- **Sold below the average:** the work income is capped at the actual gain, so
+  the capital part is 0.
+- **Estimated marginal tax:** `W(₪) × (marginal rate + national insurance and
+  health)`, with the rates set in step 4 (default 47% + 12%). This is for
+  control only. Above the national-insurance ceiling the real rate is lower.
+- **Trustee withholding:** enter the tax the trustee withheld, and the "show
+  the calculation" panel compares it with the estimate.
+
+Open points, which are not settled by an official source:
+- **Real or nominal.** Trustees usually compute the capital part nominally (all
+  at the sale-date rate). Some accountants argue for a real computation. The
+  app computes it as **real**, by the user's decision.
+- **ESPP work income.** The app uses the discount (`V` = market value on the
+  purchase date). Some plans use a 30-day average instead. You can override the
+  cost and the amount paid per lot.
+- **24 months:** counted from the allocation date (the grant for RSU, the
+  purchase for ESPP). Check your plan's rules.
+
+The 30-day average comes from Yahoo Finance daily closes in `data/stocks/`
+(split-adjusted, not dividend-adjusted). If the trustee's report shows a
+different average, type it into the lot.
 
 ## Rates
 

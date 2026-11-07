@@ -358,6 +358,30 @@ dialog::backdrop { background: rgba(0, 0, 0, .4); }
   .lots-table tr.lot-row:hover td { background: var(--surface-2); }
 }
 
+/* ------------------------------------------------------------------ views, section 102, simulator */
+.view-tabs { display: flex; gap: 0; margin-top: 16px; border-bottom: 1px solid var(--border); }
+.view-tabs [role="tab"] {
+  font: inherit; font-size: 16px; color: var(--text-2); background: transparent; border: 0;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; min-height: 44px; padding: 0 16px; cursor: pointer;
+}
+.view-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.badge-info { background: var(--accent-soft); color: var(--text); }
+.cell-sub { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+.sub-title { font-size: 16px; margin: 24px 0 8px; }
+.work-settings { margin-top: 8px; }
+input:disabled { opacity: .6; }
+#sim-prices { display: contents; }
+.row-actions { display: inline-flex; gap: 4px; }
+.sim-hero { margin-top: 0; }
+.sim-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-top: 16px; }
+.sim-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; background: var(--surface); min-width: 0; }
+.sim-card.has-issue { border-color: var(--warn-ink); }
+.sim-card .sim-qty { margin-top: 12px; max-width: 200px; }
+.sim-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sim-net { color: var(--accent); }
+.sim-later { font-size: 14px; background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; margin: 12px 0 0; }
+.sim-card .case, .sim-card .hint { margin: 12px 0 0; }
+
 /* ------------------------------------------------------------------ narrow (max-width: 767.98px) */
 @media (max-width: 767.98px) {
   .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -370,6 +394,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .4); }
   .tile { padding: 12px; }
   .tile-value { font-size: 20px; }
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .sim-cards { grid-template-columns: minmax(0, 1fr); }
+  .view-tabs [role="tab"] { flex: 1; padding: 0 8px; }
   .sheet { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
   .sticky-inner { padding-inline: 16px; }
   .sticky-nums { gap: 12px; font-size: 14px; }

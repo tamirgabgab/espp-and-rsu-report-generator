@@ -72,6 +72,14 @@
     return isoFromParts(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
   }
 
+  /** Same day N months later (clamped to the month's last day). */
+  function addMonths(iso, n) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const first = new Date(Date.UTC(y, m - 1 + n, 1));
+    const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+    return isoFromParts(first.getUTCFullYear(), first.getUTCMonth() + 1, Math.min(d, last));
+  }
+
   function halfOfYear(iso) {
     const [y, m] = iso.split('-').map(Number);
     return { year: y, half: m <= 6 ? 1 : 2, key: `${y}-H${m <= 6 ? 1 : 2}` };
@@ -187,12 +195,138 @@
     };
   }
 
+  // ---------------------------------------------------------------- stock prices
+
+  const sortedCache = new WeakMap();
+  function sortedDates(map) {
+    if (!sortedCache.has(map)) sortedCache.set(map, Object.keys(map).sort());
+    return sortedCache.get(map);
+  }
+
+  /**
+   * Average closing price over the N trading days BEFORE a date (section 102,
+   * listed company: the value of the benefit is the average of the 30 trading
+   * days that precede the allocation to the trustee).
+   * @param {object} prices  {rates: {iso: close}} or a plain map iso -> close
+   * @returns {{avg:number, count:number, from:string, to:string}|null}
+   */
+  function avgCloseBefore(prices, iso, n = 30) {
+    const map = prices && prices.rates ? prices.rates : prices;
+    if (!map || !iso) return null;
+    const dates = sortedDates(map);
+    if (!dates.length || iso > addDays(dates[dates.length - 1], 7)) return null; // no data that recent
+    let lo = 0, hi = dates.length; // first index with date >= iso
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (dates[mid] < iso) lo = mid + 1; else hi = mid; }
+    if (lo < n) return null; // not enough history
+    const win = dates.slice(lo - n, lo);
+    const avg = win.reduce((a, d) => a + map[d], 0) / n;
+    return { avg: Math.round(avg * 10000) / 10000, count: n, from: win[0], to: win[n - 1] };
+  }
+
+  /** Last close in a price file: {price, date} or null. */
+  function lastClose(prices) {
+    const map = prices && prices.rates ? prices.rates : prices;
+    if (!map) return null;
+    const dates = sortedDates(map);
+    if (!dates.length) return null;
+    const d = dates[dates.length - 1];
+    return { price: map[d], date: d };
+  }
+
+  // ---------------------------------------------------------------- section 102 (capital-gains track, trustee)
+
+  const HOLDING_MONTHS = 24;
+  const WORK_DEFAULTS = { marginalRate: 47, niRate: 12, includeNi: true };
+
+  /** Allocation date to the trustee: the grant date for RSU, the purchase date for ESPP. */
+  const allocationDate = lot => (lot.planType === 'RSU' ? lot.grantDate || '' : lot.dateAcquired || '');
+
+  /** First sale date that is not before the end of the 24-month trustee period (conservative: the day after). */
+  const unlockDate = alloc => (alloc ? addDays(addMonths(alloc, HOLDING_MONTHS), 1) : '');
+
+  /**
+   * One lot under section 102, capital-gains track with a trustee.
+   *
+   *  - Work income (marginal tax): the value at allocation minus what the
+   *    employee paid, but never more than the actual gain.
+   *      ESPP: value = market price on the purchase date (Adjusted Cost Basis),
+   *            so the work income is the discount.
+   *      RSU:  value = average close of the 30 trading days before the grant.
+   *    Converted at the sale-date representative rate (when the trustee withholds).
+   *  - Capital gain (25%): the rest. Computed as a REAL gain exactly like any
+   *    other lot (Circular 10/2025), with cost = paid + work income, dated at the
+   *    allocation date.
+   *  - A sale before the end of the 24-month trustee period leaves the track:
+   *    the whole gain is work income and there is no capital gain to report.
+   *
+   * @param {object} opts  {prices: {SYMBOL: priceFile}}
+   */
+  function computeLot102(lot, rates, overrides = {}, { prices } = {}) {
+    const isRsu = lot.planType === 'RSU';
+    const alloc = allocationDate(lot);
+    const issues = [];
+    if (!alloc) issues.push(isRsu ? 'חסר תאריך הענקה (Grant Date), שנדרש במסלול 102' : 'חסר תאריך רכישה');
+    if (alloc && lot.dateSold && alloc > lot.dateSold) issues.push('תאריך ההקצאה מאוחר מתאריך המכירה');
+    let baseUsd = NaN, baseSource = 'cost', avg = null;
+    if (isRsu) {
+      const manual = numOrNaN(lot.avg30);
+      if (!(lot.qty > 0)) issues.push('חסרה כמות מניות, שנדרשת לחישוב שווי ההטבה');
+      else if (isFinite(manual) && manual > 0) { baseUsd = round2(manual * lot.qty); baseSource = 'manual'; }
+      else if (alloc) {
+        avg = avgCloseBefore(prices && prices[lot.symbol], alloc);
+        if (avg) { baseUsd = round2(avg.avg * lot.qty); baseSource = 'avg30'; }
+        else issues.push(`אין מחירי מניה של ${lot.symbol || 'הנייר'} לחישוב ממוצע 30 הימים. אפשר להזין את הממוצע מדוח הנאמן`);
+      }
+    } else {
+      baseUsd = lot.costUsd;
+      if (!isFinite(baseUsd)) issues.push('חסרה עלות בדולרים (השווי ביום הרכישה)');
+    }
+    const sell = overrides.rateSell ? { rate: +overrides.rateSell, date: lot.dateSold, manual: true } : lookupRate(rates, lot.dateSold);
+    if (!lot.dateSold) issues.push('חסר תאריך מכירה');
+    else if (!sell) issues.push('לא נמצא שער יציג ליום המכירה - יש להזין ידנית');
+    if (!isFinite(lot.proceedsUsd)) issues.push('חסרה תמורה בדולרים');
+    if (issues.length) return { ok: false, issues, track: '102', buy: null, sell };
+
+    const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
+    const paidRaw = numOrNaN(lot.paidUsd);
+    const paidKnown = isRsu || isFinite(paidRaw);
+    const paid = isFinite(paidRaw) ? paidRaw : isRsu ? 0 : baseUsd; // unknown ESPP price: no work part
+    const unlock = unlockDate(alloc);
+    const base = { track: '102', alloc, unlock, baseUsd, baseSource, avg, paidUsd: paid, paidKnown };
+    const net = lot.proceedsUsd - fees;
+
+    if (lot.dateSold < unlock) {
+      const workUsd = round2(Math.max(0, net - paid));
+      const proceedsIls = roundILS(lot.proceedsUsd * sell.rate);
+      return {
+        ok: true, issues: [], ...base, early: true, noForm: true, buy: null, sell,
+        workUsd, workIls: roundILS(workUsd * sell.rate),
+        proceedsIls, costIls: 0, feesIls: roundILS(fees * sell.rate), nominal: 0, inflRaw: 0, inflationary: 0, real: 0, tax: 0,
+        scenario: 'early-102', gainUsd: round2(net - paid), capCostUsd: NaN, costDate: alloc,
+      };
+    }
+    const workUsd = round2(Math.max(0, Math.min(baseUsd, net) - paid));
+    const capCostUsd = round2(paid + workUsd);
+    const cap = computeLot({ ...lot, dateAcquired: alloc, costUsd: capCostUsd }, rates, overrides);
+    if (!cap.ok) return { ...cap, track: '102' };
+    return { ...cap, ...base, early: false, noForm: false, workUsd, workIls: roundILS(workUsd * cap.sell.rate), capCostUsd, costDate: alloc };
+  }
+
+  /** Estimated marginal tax (plus national insurance + health) on work income. */
+  function workTax(workIls, settings = {}) {
+    const s = { ...WORK_DEFAULTS, ...settings };
+    const rate = (+s.marginalRate || 0) + (s.includeNi ? +s.niRate || 0 : 0);
+    return workIls > 0 ? roundILS(workIls * rate / 100) : 0;
+  }
+
   /** Aggregate computed lots into half-year and yearly totals with loss offset. */
   function summarize(items) {
     const groups = new Map();
     const add = (key, label, it) => {
-      if (!groups.has(key)) groups.set(key, { key, label, gains: 0, losses: 0, proceedsIls: 0, costIls: 0, nominal: 0, inflationary: 0, count: 0 });
+      if (!groups.has(key)) groups.set(key, { key, label, gains: 0, losses: 0, proceedsIls: 0, costIls: 0, nominal: 0, inflationary: 0, count: 0, workIls: 0, workCount: 0 });
       const g = groups.get(key);
+      if (it.calc.workIls > 0) { g.workIls += it.calc.workIls; g.workCount++; }
+      if (it.calc.noForm) return; // early 102 sale: work income only, no capital gain
       g.count++;
       g.proceedsIls += it.calc.proceedsIls;
       g.costIls += it.calc.costIls + it.calc.feesIls;
@@ -343,13 +477,15 @@
     'loss-allowed': 'הפסד, והשקל נחלש: כל ההפסד הנומינלי מותר בקיזוז (דוגמה 2 בחוזר).',
     'loss-partly-fx': 'הפסד, והשקל התחזק: החלק של ההפסד שנובע מירידת הדולר אינו מותר בקיזוז (דוגמה 4 בחוזר, הלכת מוזס).',
     'fx-loss-only': 'רווח בדולרים אבל הפסד בשקלים: ההפסד נובע רק מהשער, ולכן אין רווח ואין הפסד.',
+    'early-102': 'מכירה לפני תום 24 החודשים אצל הנאמן: ההקצאה יוצאת ממסלול רווח הון, וכל הרווח הוא הכנסת עבודה במס שולי. אין רווח הון לדיווח ב‑1399.',
   };
 
   // ---------------------------------------------------------------- backup / restore
 
   const BACKUP_APP = 'espp-rsu-1399';
-  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order'];
-  const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate']; // never the ID number
+  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls'];
+  const HOLDING_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'grantDate', 'costPerShare', 'paidPerShare', 'avg30', 'sec102'];
+  const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate', 'marginalRate', 'niRate', 'includeNi']; // never the ID number
 
   const numOrNaN = v => (v === null || v === undefined || v === '' ? NaN : Number(v));
 
@@ -360,19 +496,35 @@
     lot.feesUsd = isFinite(numOrNaN(lot.feesUsd)) ? numOrNaN(lot.feesUsd) : 0;
     lot.sec102 = lot.sec102 === true || lot.sec102 === false ? lot.sec102 : null;
     lot.symbol = String(lot.symbol || '').toUpperCase();
-    for (const k of ['dateAcquired', 'dateSold']) lot[k] = parseDate(lot[k]) || '';
-    for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order']) lot[k] = lot[k] === null ? '' : String(lot[k]);
+    for (const k of ['dateAcquired', 'dateSold', 'grantDate']) lot[k] = parseDate(lot[k]) || '';
+    for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order', 'avg30']) lot[k] = lot[k] === null ? '' : String(lot[k]);
+    for (const k of ['paidUsd', 'withheldIls']) lot[k] = numOrNaN(lot[k]);
     return lot;
   }
 
+  function cleanHolding(raw) {
+    const h = {};
+    for (const k of HOLDING_FIELDS) h[k] = raw && raw[k] !== undefined ? raw[k] : '';
+    for (const k of ['qty', 'costPerShare', 'paidPerShare']) h[k] = numOrNaN(h[k]);
+    h.sec102 = h.sec102 === true || h.sec102 === false ? h.sec102 : null;
+    h.symbol = String(h.symbol || '').toUpperCase();
+    h.planType = h.planType === 'RSU' ? 'RSU' : 'ESPP';
+    for (const k of ['dateAcquired', 'grantDate']) h[k] = parseDate(h[k]) || '';
+    h.avg30 = h.avg30 === null ? '' : String(h.avg30);
+    return h;
+  }
+
+  const pick = (o, fields) => { const out = {}; for (const k of fields) out[k] = typeof o[k] === 'number' && !isFinite(o[k]) ? null : o[k]; return out; };
+
   /** Build the backup object (JSON-serialisable). The ID number is never included. */
-  function makeBackup(profile, lots, now = new Date()) {
+  function makeBackup(profile, lots, now = new Date(), holdings = []) {
     const prof = {};
     for (const k of PROFILE_FIELDS) if (profile && profile[k] !== undefined) prof[k] = profile[k];
     return {
       app: BACKUP_APP, version: 1, exportedAt: now.toISOString(),
       profile: prof,
-      lots: lots.map(l => { const o = {}; for (const k of LOT_FIELDS) o[k] = isFinite(l[k]) || typeof l[k] !== 'number' ? l[k] : null; return o; }),
+      lots: lots.map(l => pick(l, LOT_FIELDS)),
+      holdings: holdings.map(h => pick(h, HOLDING_FIELDS)),
     };
   }
 
@@ -384,7 +536,8 @@
     if (data.version > 1) throw new Error('קובץ הגיבוי נוצר בגרסה חדשה יותר של הכלי.');
     const profile = {};
     for (const k of PROFILE_FIELDS) if (data.profile && data.profile[k] !== undefined) profile[k] = data.profile[k];
-    return { lots: data.lots.map(cleanLot), profile, exportedAt: data.exportedAt || null };
+    const holdings = Array.isArray(data.holdings) ? data.holdings.map(cleanHolding) : [];
+    return { lots: data.lots.map(cleanLot), holdings, profile, exportedAt: data.exportedAt || null };
   }
 
   const lotKey = l => [l.symbol, l.dateAcquired, l.dateSold, l.qty, l.proceedsUsd, l.costUsd].map(v => String(v ?? '')).join('|');
@@ -420,6 +573,10 @@
     adjustedCostUsd: ['adjustedcostbasis', 'adjustedcost'],
     costBasisUsd: ['costbasis', 'acquisitioncost', 'totalcost'],
     order: ['ordernumber', 'order', 'orderno'],
+    grantDate: ['grantdate'],
+    acquisitionCostUsd: ['acquisitioncost'],
+    purchasePrice: ['purchaseprice', 'purchasepricepershare'],
+    purchaseFmv: ['purchasedatefairmktvalue', 'purchasedatefmv', 'purchasefmv', 'purchasedatefairmarketvalue'],
   };
 
   function mapHeaders(headerRow) {
@@ -470,10 +627,25 @@
       if (!dateSold) continue;
       let cost = parseMoney(get('adjustedCostUsd'));
       if (!isFinite(cost)) cost = parseMoney(get('costBasisUsd'));
+      const planType = normalizePlan(get('planType'));
+      const qty = parseMoney(get('qty'));
+      // What the employee paid (ESPP: purchase price x qty). RSU: nothing.
+      let paidUsd = NaN;
+      if (planType === 'ESPP') {
+        paidUsd = parseMoney(get('acquisitionCostUsd'));
+        const pp = parseMoney(get('purchasePrice'));
+        if (!isFinite(paidUsd) && isFinite(pp) && isFinite(qty)) paidUsd = round2(pp * qty);
+        // If the file's cost is just the price paid, rebuild the market value from the purchase-date FMV.
+        const fmv = parseMoney(get('purchaseFmv'));
+        if (isFinite(fmv) && isFinite(qty) && (!isFinite(cost) || (isFinite(paidUsd) && Math.abs(cost - paidUsd) < 0.01))) cost = round2(fmv * qty);
+        if (isFinite(paidUsd) && isFinite(cost) && paidUsd > cost) paidUsd = NaN; // not a purchase price
+      } else if (planType === 'RSU') paidUsd = 0;
       lots.push({
         symbol: String(get('symbol') || '').trim().toUpperCase(),
-        planType: normalizePlan(get('planType')),
-        qty: parseMoney(get('qty')),
+        planType,
+        qty,
+        grantDate: planType === 'RSU' ? parseDate(get('grantDate')) || '' : '',
+        paidUsd,
         dateAcquired: parseDate(get('dateAcquired')),
         dateSold,
         proceedsUsd: parseMoney(get('proceedsUsd')),
@@ -487,6 +659,98 @@
     return { lots, warnings };
   }
 
+  // Header aliases for E*Trade holdings exports (Portfolios -> By Benefit Type ->
+  // Download Expanded). The exact layout was not verified on a real file, so the
+  // parser is tolerant and every imported row should be reviewed.
+  const HOLDING_ALIASES = {
+    recordType: ['recordtype'],
+    symbol: ['symbol', 'ticker'],
+    planType: ['plantype', 'benefittype'],
+    qty: ['sellableqty', 'sellablequantity', 'sellableshares', 'availableqty', 'sharesavailable', 'quantity', 'qty', 'shares'],
+    purchaseDate: ['purchasedate', 'dateacquired', 'acquireddate'],
+    vestDate: ['vestdate', 'releasedate', 'vestingdate'],
+    grantDate: ['grantdate'],
+    purchasePrice: ['purchaseprice', 'purchasepricepershare'],
+    fmv: ['purchasedatefmv', 'purchasedatefairmktvalue', 'purchasefmv', 'purchasedatefairmarketvalue', 'vestdatefmv', 'fmvatvest', 'releasefmv', 'vestfmv', 'costbasispershare'],
+  };
+
+  /** Parse unsold shares (for the simulator) from a sheet. @returns {{holdings, warnings}} */
+  function parseHoldingsRows(rows, sheetName = '') {
+    const warnings = [];
+    let headerAt = -1, idx = {};
+    for (let r = 0; r < Math.min(rows.length, 30); r++) {
+      const n = (rows[r] || []).map(norm);
+      if (!n.includes('symbol')) continue;
+      const map = {};
+      for (const [key, aliases] of Object.entries(HOLDING_ALIASES)) {
+        for (const a of aliases) { const i = n.indexOf(a); if (i !== -1) { map[key] = i; break; } }
+      }
+      if (map.qty !== undefined) { headerAt = r; idx = map; break; }
+    }
+    if (headerAt === -1) return { holdings: [], warnings: ['לא נמצאה שורת כותרות עם Symbol וכמות'] };
+    const sheetPlan = /espp/i.test(sheetName) ? 'ESPP' : /restrict|rsu|\brs\b/i.test(sheetName) ? 'RSU' : '';
+    const data = [];
+    for (let r = headerAt + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const get = k => (idx[k] === undefined ? undefined : row[idx[k]]);
+      const rt = norm(get('recordType'));
+      if (['total', 'totals', 'summary', 'overallsummary'].includes(rt) || norm(row[0]) === 'totals') continue;
+      const qty = parseMoney(get('qty'));
+      if (!(qty > 0)) continue;
+      let plan = normalizePlan(get('planType')) || sheetPlan;
+      if (!plan) plan = get('purchasePrice') !== undefined && get('purchasePrice') !== '' ? 'ESPP' : 'RSU';
+      data.push({ rt, plan, get, qty });
+    }
+    // Prefer one row per lot: purchase rows for ESPP, grant rows for RSU, when the file has record types.
+    const hasType = t => data.some(d => d.rt.includes(t));
+    const rowsOut = data.filter(d => !d.rt || (d.plan === 'ESPP' ? !hasType('purchase') || d.rt.includes('purchase') : !hasType('grant') || d.rt.includes('grant')));
+    const holdings = rowsOut.map(({ plan, get, qty }) => cleanHolding({
+      symbol: String(get('symbol') || '').trim(),
+      planType: plan === 'RSU' ? 'RSU' : 'ESPP',
+      qty,
+      dateAcquired: parseDate(plan === 'RSU' ? get('vestDate') : get('purchaseDate')) || '',
+      grantDate: plan === 'RSU' ? parseDate(get('grantDate')) || '' : '',
+      costPerShare: parseMoney(get('fmv')),
+      paidPerShare: plan === 'RSU' ? 0 : parseMoney(get('purchasePrice')),
+      sec102: null,
+    }));
+    if (!holdings.length) warnings.push('לא נמצאו שורות עם כמות מניות');
+    return { holdings, warnings };
+  }
+
+  // ---------------------------------------------------------------- sale simulator
+
+  /** Turn a holding (per-share values) into a lot sold at `price` on `date`. */
+  function holdingToLot(h, { qty, price, date }) {
+    const q = isFinite(qty) ? qty : h.qty;
+    return {
+      symbol: h.symbol, planType: h.planType, qty: q, dateAcquired: h.dateAcquired, grantDate: h.grantDate, dateSold: date,
+      proceedsUsd: round2(price * q), costUsd: round2(h.costPerShare * q),
+      paidUsd: isFinite(h.paidPerShare) ? round2(h.paidPerShare * q) : NaN, avg30: h.avg30, feesUsd: 0, sec102: h.sec102,
+    };
+  }
+
+  /**
+   * Simulate selling a holding. Returns the capital and work-income parts, the
+   * estimated taxes and the net amount, plus (for an early 102 sale) the same
+   * sale on the unlock date at the same price and rate.
+   * @param {object} o {qty, price, date, rate, is102, rates, prices, settings}
+   */
+  function simulateHolding(h, o) {
+    const run = date => {
+      const lot = holdingToLot(h, { qty: o.qty, price: o.price, date });
+      const overrides = { rateSell: o.rate };
+      const calc = o.is102 ? computeLot102(lot, o.rates, overrides, { prices: o.prices }) : computeLot(lot, o.rates, overrides);
+      if (!calc.ok) return { ok: false, issues: calc.issues, lot };
+      const wTax = o.is102 ? workTax(calc.workIls, o.settings) : 0;
+      const proceedsIls = roundILS(lot.proceedsUsd * calc.sell.rate);
+      return { ok: true, lot, calc, workTax: wTax, capTax: calc.tax, net: proceedsIls - wTax - calc.tax, proceedsIls };
+    };
+    const now = run(o.date);
+    if (!now.ok || !o.is102 || !now.calc.early) return { now };
+    return { now, later: run(now.calc.unlock) };
+  }
+
   function normalizePlan(v) {
     const s = String(v || '').trim().toUpperCase();
     if (!s) return '';
@@ -497,10 +761,12 @@
   }
 
   return {
-    TAX_RATE, parseDate, formatDateIL, addDays, halfOfYear, parseMoney, round2, roundILS,
+    TAX_RATE, parseDate, formatDateIL, addDays, addMonths, halfOfYear, parseMoney, round2, roundILS,
     lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
     CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
     closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,
-    makeBackup, parseBackup, mergeLots, lotKey,
+    makeBackup, parseBackup, mergeLots, lotKey, cleanHolding,
+    avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
+    parseHoldingsRows, holdingToLot, simulateHolding,
   };
 });

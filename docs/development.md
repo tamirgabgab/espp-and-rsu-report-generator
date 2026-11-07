@@ -8,10 +8,11 @@ scripts, no bundler).
 | File | Responsibility |
 |---|---|
 | `index.html` | The page and its sections. It loads vendor libraries, rate data and `src/js/*` in order. |
-| `src/js/core.js` | Pure logic with no DOM, so it runs in the browser (`window.Core`) and in Node tests:<br>• date parsing<br>• rate lookup<br>• `computeLot` and `summarize`<br>• `crossCheck`, `nyToUtcEpoch` and `intradayAt`<br>• the E*Trade parser (`parseEtradeRows`, `COLUMN_ALIASES`) |
+| `src/js/core.js` | Pure logic with no DOM, so it runs in the browser (`window.Core`) and in Node tests:<br>• date parsing<br>• rate lookup<br>• `computeLot` and `summarize`<br>• `crossCheck`, `nyToUtcEpoch` and `intradayAt`<br>• the E*Trade parser (`parseEtradeRows`, `COLUMN_ALIASES`)<br>• section 102: `computeLot102`, `workTax`, `allocationDate`, `unlockDate`<br>• stock prices: `avgCloseBefore` (30-trading-day average), `lastClose`<br>• simulator: `parseHoldingsRows`, `holdingToLot`, `simulateHolding`<br>• backup: `makeBackup`, `parseBackup` (lots, holdings, profile without the ID) |
 | `src/js/pdf1399.js` | Builds the PDF:<br>• copies page 1 of the blank form for each lot and draws the values at `FIELD_MAP` coordinates<br>• adds the summary pages<br>• works in the browser and in Node |
 | `src/js/chart.js` | SVG chart of the representative rate with buy/sell markers and a hover tooltip |
 | `src/js/app.js` | UI:<br>• state in localStorage<br>• year filter<br>• lot list: a table on desktop, cards below 760px<br>• edit drawer (`<dialog>`) with field validation and order-text paste<br>• the "how was it calculated" panel, with formula, substitution, rate cross-check and intraday rate<br>• headline tiles and sticky bar<br>• summary and general tax explanation<br>• chart<br>• PDF / Excel export and the pdf.js preview<br>• toasts with undo |
+| `src/js/sim.js` | The sale simulator view: holdings (localStorage `f1399.holdings`), the holdings import, and the results. It reuses `Core.simulateHolding` and a few helpers that `app.js` exposes as `window.App`. |
 | `src/css/style.css` | Styles. The colour tokens on `:root` have a dark-mode variant. |
 | `tools/update_rates.py` | Downloads all rate sources (see [exchange-rates.md](exchange-rates.md)) |
 
@@ -88,6 +89,17 @@ GitHub Actions runs both on every push (`.github/workflows/tests.yml`).
 
 If a real export uses different headers, add the normalised header name
 (lower case, letters and digits only) to `COLUMN_ALIASES`.
+
+Section 102 columns read from the G&L file: *Grant Date* (RSU), *Acquisition
+Cost* or *Purchase Price* (ESPP, what was paid) and *Purchase Date Fair Mkt.
+Value*.
+
+The simulator's holdings import (`parseHoldingsRows`, `HOLDING_ALIASES`) reads
+E*Trade's *Holdings → By Benefit Type → Download Expanded* file. Its layout was
+**not verified on a real file**: it looks for a header row with *Symbol* and a
+quantity column (*Sellable Qty.* first), and prefers *Purchase* rows for ESPP
+and *Grant* rows for RSU when the file has a *Record Type* column. Adjust the
+aliases once a real file is available.
 
 ## Vendor libraries
 

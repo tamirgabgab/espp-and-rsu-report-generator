@@ -4,3 +4,6 @@ node_modules/
 # Never commit real transaction exports
 G&L_*.xlsx
 G&L_*.csv
+ByBenefitType*.xlsx
+ByStatus*.xlsx
+BenefitHistory*.xlsx
