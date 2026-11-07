@@ -21,6 +21,11 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
   vs. marginal (salary) tax.
 - **Optional rate at the exact sale time** (minute / hour), for your
   information only.
+- **One-click package for your accountant:** a ZIP with the PDF, the Excel
+  file, the original E*Trade file and a short explanation.
+- **Backup and restore** your lots to move between devices. The ID number is
+  never included.
+- **Home-screen app** with its own icon, and **light / dark / auto** themes.
 - **Private.** Everything runs in your browser and nothing is uploaded. Your
   ID number is never saved, not even in the browser.
 
@@ -61,7 +66,8 @@ The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 | `assets/fonts/` | Hebrew font embedded in the PDF, with its license |
 | `data/rates/daily/` | Daily USD/ILS rates: Bank of Israel, ECB and Yahoo (`.json`, plus `.js` for the browser) |
 | `data/rates/intraday/` | Yahoo 1-minute (by month) and 1-hour (by year) rates |
-| `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS, pdf.js for the preview) and their licenses |
+| `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS, pdf.js for the preview, JSZip for the package) and their licenses |
+| `assets/icons/`, `manifest.webmanifest` | App icons and the web-app manifest (home-screen install) |
 | `tools/` | `update_rates.py`, which downloads all rate sources |
 | `tests/` | Unit tests and a sample PDF renderer |
 | `docs/` | Documentation |

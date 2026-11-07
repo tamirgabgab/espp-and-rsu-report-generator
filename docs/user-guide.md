@@ -131,6 +131,41 @@ Then:
 The chart shows the USD/ILS representative rate since 2020, with your purchase
 dates (green) and sale dates (orange) marked.
 
+## 7. Package for the accountant
+
+**"הורדת חבילה לרואה החשבון"** (download the package for the accountant)
+creates one ZIP file with:
+- `form-1399-<year>.pdf`: the forms and the summary appendix;
+- `capital-gains-<year>.xlsx`: the full calculation;
+- the original E*Trade file, if you uploaded it in this session (the file is
+  kept only in memory and is never saved);
+- `explanation.txt`: a short Hebrew explanation of the totals, each lot, the
+  rate source, the calculation method and the assumptions;
+- `backup.json`: a backup that can be loaded back into the app.
+
+## 8. Backup and restore
+
+- **"שמירת גיבוי"** (save backup) downloads a `.json` file with your lots and
+  details. The ID number is **never** included.
+- **"טעינת גיבוי"** (load backup) reads such a file, for example on another
+  computer or phone:
+  - if the list is empty, the lots are loaded right away;
+  - if the list already has lots, you choose between **"החלפת הרשימה"**
+    (replace the list) and **"הוספה לרשימה"** (add to the list). When adding,
+    exact duplicates are skipped.
+
+  Either way, an undo button appears for a few seconds.
+
+## 9. Install as an app
+
+The app can be added to your home screen with its own icon. It still needs an
+internet connection to work.
+
+- **Android (Chrome):** use the "התקנה כאפליקציה" (install as an app) button at
+  the bottom of the page when it appears, or menu ⋮ → "הוספה למסך הבית" (add to
+  home screen).
+- **iPhone (Safari):** tap Share, then "הוסף למסך הבית" (add to home screen).
+
 ## FAQ
 
 **Is a form 1399 required for every sale?**

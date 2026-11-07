@@ -17,6 +17,12 @@
       } catch (e) { /* storage blocked: follow the device */ }
     })();
   </script>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="טופס 1399">
   <link rel="stylesheet" href="src/css/style.css">
 </head>
 <body>
@@ -40,6 +46,7 @@
         <button id="dl-pdf" class="btn btn-primary" type="button">הורדת PDF</button>
         <button id="preview-pdf" class="btn" type="button">צפייה ב‑PDF</button>
         <button id="dl-xlsx" class="btn" type="button">הורדת Excel</button>
+        <button id="dl-zip" class="btn" type="button">הורדת חבילה לרואה החשבון</button>
       </div>
       <p class="toolbar-scope" id="export-scope"></p>
       <div id="export-msg" class="msg" role="status" aria-live="polite"></div>
@@ -81,6 +88,12 @@
       <div class="actions">
         <button id="add-row" class="btn" type="button">הוספת עסקה ידנית</button>
         <button id="load-example" class="btn btn-quiet" type="button">טעינת דוגמה</button>
+      </div>
+      <div class="backup-row">
+        <span class="backup-label">גיבוי ומעבר בין מכשירים:</span>
+        <button id="backup-save" class="btn btn-sm" type="button">שמירת גיבוי</button>
+        <button id="backup-load" class="btn btn-sm" type="button">טעינת גיבוי</button>
+        <input id="backup-file" type="file" accept=".json,application/json" class="visually-hidden" tabindex="-1" aria-hidden="true">
       </div>
       <details class="howto">
         <summary>איך מורידים את הקובץ מ‑E*Trade?</summary>
@@ -189,6 +202,7 @@
     </section>
 
     <footer class="foot">
+      <p><button id="install-app" class="btn btn-sm" type="button" hidden>התקנה כאפליקציה</button></p>
       <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
     </footer>
   </main>
@@ -311,6 +325,17 @@
     <div class="confirm-actions">
       <button type="button" class="btn" id="confirm-cancel" data-close>ביטול</button>
       <button type="button" class="btn btn-danger" id="confirm-ok"></button>
+    </div>
+  </dialog>
+
+  <!-- Restore a backup when the list already has lots -->
+  <dialog id="restore-dialog" class="confirm" aria-labelledby="restore-title" aria-describedby="restore-body">
+    <h2 id="restore-title">טעינת גיבוי</h2>
+    <p id="restore-body"></p>
+    <div class="confirm-actions">
+      <button type="button" class="btn" id="restore-cancel" data-close>ביטול</button>
+      <button type="button" class="btn" id="restore-merge">הוספה לרשימה</button>
+      <button type="button" class="btn btn-danger" id="restore-replace">החלפת הרשימה</button>
     </div>
   </dialog>
 

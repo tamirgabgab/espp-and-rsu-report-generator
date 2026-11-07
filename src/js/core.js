@@ -345,6 +345,64 @@
     'fx-loss-only': 'רווח בדולרים אבל הפסד בשקלים: ההפסד נובע רק מהשער, ולכן אין רווח ואין הפסד.',
   };
 
+  // ---------------------------------------------------------------- backup / restore
+
+  const BACKUP_APP = 'espp-rsu-1399';
+  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order'];
+  const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate']; // never the ID number
+
+  const numOrNaN = v => (v === null || v === undefined || v === '' ? NaN : Number(v));
+
+  function cleanLot(raw) {
+    const lot = {};
+    for (const k of LOT_FIELDS) lot[k] = raw && raw[k] !== undefined ? raw[k] : '';
+    for (const k of ['qty', 'proceedsUsd', 'costUsd']) lot[k] = numOrNaN(lot[k]);
+    lot.feesUsd = isFinite(numOrNaN(lot.feesUsd)) ? numOrNaN(lot.feesUsd) : 0;
+    lot.sec102 = lot.sec102 === true || lot.sec102 === false ? lot.sec102 : null;
+    lot.symbol = String(lot.symbol || '').toUpperCase();
+    for (const k of ['dateAcquired', 'dateSold']) lot[k] = parseDate(lot[k]) || '';
+    for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order']) lot[k] = lot[k] === null ? '' : String(lot[k]);
+    return lot;
+  }
+
+  /** Build the backup object (JSON-serialisable). The ID number is never included. */
+  function makeBackup(profile, lots, now = new Date()) {
+    const prof = {};
+    for (const k of PROFILE_FIELDS) if (profile && profile[k] !== undefined) prof[k] = profile[k];
+    return {
+      app: BACKUP_APP, version: 1, exportedAt: now.toISOString(),
+      profile: prof,
+      lots: lots.map(l => { const o = {}; for (const k of LOT_FIELDS) o[k] = isFinite(l[k]) || typeof l[k] !== 'number' ? l[k] : null; return o; }),
+    };
+  }
+
+  /** Parse and validate a backup file's text. Throws an Error with a Hebrew message. */
+  function parseBackup(text) {
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('הקובץ אינו קובץ גיבוי תקין (JSON פגום).'); }
+    if (!data || data.app !== BACKUP_APP || !Array.isArray(data.lots)) throw new Error('הקובץ אינו קובץ גיבוי של מחולל טופס 1399.');
+    if (data.version > 1) throw new Error('קובץ הגיבוי נוצר בגרסה חדשה יותר של הכלי.');
+    const profile = {};
+    for (const k of PROFILE_FIELDS) if (data.profile && data.profile[k] !== undefined) profile[k] = data.profile[k];
+    return { lots: data.lots.map(cleanLot), profile, exportedAt: data.exportedAt || null };
+  }
+
+  const lotKey = l => [l.symbol, l.dateAcquired, l.dateSold, l.qty, l.proceedsUsd, l.costUsd].map(v => String(v ?? '')).join('|');
+
+  /** Append incoming lots to existing ones, skipping exact duplicates. */
+  function mergeLots(existing, incoming) {
+    const seen = new Set(existing.map(lotKey));
+    const added = [];
+    let skipped = 0;
+    for (const l of incoming) {
+      const k = lotKey(l);
+      if (seen.has(k)) { skipped++; continue; }
+      seen.add(k);
+      added.push(l);
+    }
+    return { merged: existing.concat(added), added: added.length, skipped };
+  }
+
   // ---------------------------------------------------------------- E*Trade import
 
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -443,5 +501,6 @@
     lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
     CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
     closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,
+    makeBackup, parseBackup, mergeLots, lotKey,
   };
 });

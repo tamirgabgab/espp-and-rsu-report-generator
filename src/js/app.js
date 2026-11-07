@@ -31,6 +31,7 @@
   const profile = Object.assign({ name: '', belonging: '2', place: 'israel', sec102: true, signDate: '' }, store.get(LS_PROFILE, {}), { idNumber: '' });
   let lots = store.get(LS_LOTS, []).map(l => ({ ...l, id: nextId++ }));
   let yearFilter = 'all';
+  let lastImport = null; // {name, buf}: the E*Trade file imported in this session (memory only, for the ZIP)
   const openPanels = new Set();
 
   const blankLot = () => ({ id: nextId++, symbol: '', planType: 'ESPP', qty: NaN, dateAcquired: '', dateSold: '', timeSold: '', proceedsUsd: NaN, costUsd: NaN, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '' });
@@ -657,6 +658,7 @@
     if (!file) return;
     try {
       const buf = await file.arrayBuffer();
+      lastImport = { name: file.name, buf };
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
       let best = { lots: [], warnings: ['הקובץ ריק'] };
       for (const name of wb.SheetNames) {
@@ -703,6 +705,14 @@
     input.setAttribute('aria-invalid', err && v ? 'true' : 'false');
     $('#p-id-err').textContent = err;
     return !v || !err;
+  }
+
+  function syncProfileInputs() {
+    $('#p-name').value = profile.name || '';
+    $('#p-belonging').value = profile.belonging || '2';
+    $('#p-place').value = profile.place || 'israel';
+    $('#p-date').value = profile.signDate || today();
+    $('#p-102').checked = !!profile.sec102;
   }
 
   function bindProfile() {
@@ -845,6 +855,11 @@
   function onXlsx() {
     const ok = exportReady();
     if (!ok) return;
+    XLSX.writeFile(buildWorkbook(ok), `capital-gains-${fileYear(ok)}.xlsx`);
+    setMsg($('#export-msg'), 'קובץ ה‑Excel ירד.', 'ok');
+  }
+
+  function buildWorkbook(ok) {
     const rows = ok.map(({ lot, calc }, i) => ({
       '#': i + 1, 'נייר': lot.symbol, 'תוכנית': lot.planType, 'כמות': lot.qty,
       'תאריך רכישה': Core.formatDateIL(lot.dateAcquired), 'תאריך מכירה': Core.formatDateIL(lot.dateSold), 'שעת מכירה (ניו יורק)': lot.timeSold || '',
@@ -873,8 +888,153 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sums), 'סיכום');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(checks), 'בקרת שערים');
     wb.Workbook = { Views: [{ RTL: true }] };
-    XLSX.writeFile(wb, `capital-gains-${fileYear(ok)}.xlsx`);
-    setMsg($('#export-msg'), 'קובץ ה‑Excel ירד.', 'ok');
+    return wb;
+  }
+
+  // ------------------------------------------------------------ backup / restore
+
+  function downloadBackup() {
+    if (!lots.length) { toast('אין עדיין עסקאות לגבות.'); return; }
+    const data = Core.makeBackup(profile, lots);
+    download(JSON.stringify(data, null, 2), `1399-backup-${today()}.json`, 'application/json');
+    toast(`נשמר גיבוי של ${lots.length === 1 ? 'עסקה אחת' : `${lots.length} עסקאות`}. מספר הזהות לא נכלל בגיבוי.`);
+  }
+
+  let pendingRestore = null;
+
+  function applyRestore(mode) {
+    const data = pendingRestore;
+    pendingRestore = null;
+    if (!data) return;
+    const before = lots.slice();
+    const beforeProfile = { ...profile };
+    const fresh = data.lots.map(l => ({ ...blankLot(), ...l }));
+    let text;
+    if (mode === 'replace') {
+      lots = fresh;
+      Object.assign(profile, data.profile);
+      text = `נטענו ${fresh.length} עסקאות מהגיבוי, והרשימה הקודמת הוחלפה.`;
+    } else {
+      const r = Core.mergeLots(lots, fresh);
+      lots = r.merged;
+      for (const [k, v] of Object.entries(data.profile)) if (!profile[k]) profile[k] = v; // fill only empty details
+      text = `נוספו ${r.added} עסקאות מהגיבוי${r.skipped ? `, ו‑${r.skipped} כפולות דולגו` : ''}.`;
+    }
+    yearFilter = 'all';
+    openPanels.clear();
+    syncProfileInputs();
+    render();
+    $('#lots-title').focus();
+    toast(text, { label: 'ביטול', run: () => { lots = before; Object.assign(profile, beforeProfile); syncProfileInputs(); render(); } });
+  }
+
+  async function onBackupFile(file) {
+    if (!file) return;
+    const msg = $('#import-msg');
+    try {
+      pendingRestore = Core.parseBackup(await file.text());
+    } catch (e) {
+      setMsg(msg, e.message, 'err', { actions: [{ label: 'בחירת קובץ אחר', run: () => $('#backup-file').click() }] });
+      return;
+    }
+    setMsg(msg, '', '');
+    if (!lots.length) { applyRestore('replace'); return; }
+    const n = pendingRestore.lots.length;
+    $('#restore-body').textContent = `בקובץ הגיבוי ${n === 1 ? 'עסקה אחת' : `${n} עסקאות`}, וברשימה כרגע ${lots.length === 1 ? 'עסקה אחת' : `${lots.length} עסקאות`}. אפשר להחליף את הרשימה בגיבוי, או להוסיף את עסקאות הגיבוי לרשימה (כפולות ידולגו).`;
+    $('#restore-dialog').showModal();
+    $('#restore-cancel').focus();
+  }
+
+  // ------------------------------------------------------------ ZIP package for the accountant
+
+  function explanationText(ok) {
+    const groups = Core.summarize(ok);
+    const L = [];
+    L.push('הסבר לחישוב רווח ההון ממכירת מניות – טופס 1399');
+    L.push('='.repeat(48));
+    L.push(`נוצר: ${Core.formatDateIL(today())} · מחולל טופס 1399 · https://tamirgabgab.github.io/espp-and-rsu-report-generator/`);
+    if (profile.name) L.push(`שם: ${profile.name}`);
+    const sales = n => (n === 1 ? 'מכירה אחת' : `${n} מכירות`);
+    L.push(`היקף: ${yearFilter === 'all' ? 'כל העסקאות' : `שנת ${yearFilter}`} · ${sales(ok.length)} (lots)`);
+    L.push('');
+    L.push('סיכום');
+    L.push('-----');
+    for (const g of groups) {
+      L.push(`${g.label}: ${sales(g.count)} · רווח ריאלי נטו ${fmt(g.net)} ₪ · מס משוער 25%: ${fmt(g.tax)} ₪${g.isYear ? '' : ` · מקדמה עד ${Core.formatDateIL(dueDate(g.key))}`}`);
+    }
+    L.push('');
+    L.push('פירוט המכירות');
+    L.push('-------------');
+    ok.forEach(({ lot, calc }, i) => {
+      L.push(`${i + 1}. ${lot.symbol || '—'} ${lot.planType || ''}${isFinite(lot.qty) ? `, ${lot.qty} מניות` : ''}${sec102Of(lot) ? ' (סעיף 102)' : ''}`);
+      L.push(`   נרכש ${Core.formatDateIL(lot.dateAcquired)} בשער ${calc.buy.rate}; נמכר ${Core.formatDateIL(lot.dateSold)} בשער ${calc.sell.rate}${lot.timeSold ? ` (שעה ${lot.timeSold} שעון ניו יורק)` : ''}.`);
+      L.push(`   תמורה ${usd(lot.proceedsUsd)}$ = ${fmt(calc.proceedsIls)} ₪; עלות ${usd(lot.costUsd)}$ = ${fmt(calc.costIls)} ₪${calc.feesIls ? `; הוצאות ${fmt(calc.feesIls)} ₪` : ''}.`);
+      L.push(`   רווח נומינלי ${fmt(calc.nominal)} ₪; סכום אינפלציוני ${fmt(calc.inflationary)} ₪; רווח/הפסד ריאלי ${fmt(calc.real)} ₪.`);
+      L.push(`   ${Core.SCENARIO_TEXT[calc.scenario] || ''}`);
+    });
+    L.push('');
+    L.push('שיטת החישוב');
+    L.push('-----------');
+    L.push('• שערים: השער היציג של בנק ישראל ביום הרכישה וביום המכירה. ביום שבו לא פורסם שער נלקח השער האחרון שפורסם לפניו. השערים נבדקו מול ECB ו-Yahoo Finance.');
+    L.push('• חישוב לפי חוזר מס הכנסה 10/2025 (הלכת מוזס): ליחיד שרכש נייר ערך בדולרים, שער הדולר משמש כמדד.');
+    L.push('  A = (תמורה $ − עלות $ − עמלות $) × שער מכירה ;  B = תמורה $ × שער מכירה − עלות $ × שער רכישה − עמלות $ × שער מכירה');
+    L.push('  רווח ריאלי = הקטן מבין A ו-B כששניהם רווח; הגדול מביניהם כששניהם הפסד; 0 אם הסימנים שונים.');
+    L.push('• עלות: Adjusted Cost Basis מ-E*Trade (השווי ביום הרכישה ב-ESPP או ביום ההבשלה ב-RSU), בהנחה שההטבה מוסתה כהכנסת עבודה במשכורת.');
+    L.push('• מס: 25% על הרווח הריאלי, אחרי קיזוז הפסדים באותה תקופה. מס יסף לא חושב.');
+    L.push('');
+    L.push('קבצים בחבילה');
+    L.push('------------');
+    L.push(`• form-1399-${fileYear(ok)}.pdf – טופס 1399 לכל מכירה ונספח סיכום`);
+    L.push(`• capital-gains-${fileYear(ok)}.xlsx – החישוב המלא, סיכום ובקרת שערים`);
+    L.push(lastImport ? `• ${lastImport.name} – קובץ ה-Gains & Losses המקורי מ-E*Trade` : '• קובץ E*Trade המקורי לא נכלל, כי לא הועלה קובץ במושב הזה.');
+    L.push('• backup.json – גיבוי הנתונים לטעינה חוזרת בכלי (ללא מספר זהות)');
+    L.push('');
+    L.push('המסמך הוכן אוטומטית ואינו ייעוץ מס.');
+    return '\uFEFF' + L.join('\r\n'); // BOM + CRLF so Windows Notepad shows Hebrew correctly
+  }
+
+  async function onZip() {
+    const ok = exportReady();
+    if (!ok) return;
+    const msg = $('#export-msg');
+    const btns = [$('#dl-zip')];
+    await withBusy(btns, async () => {
+      const t = setTimeout(() => setMsg(msg, 'מכין את החבילה…', ''), 100);
+      try {
+        if (!window.JSZip) await loadScript('vendor/jszip.min.js');
+        const zip = new window.JSZip();
+        const year = fileYear(ok);
+        zip.file(`form-1399-${year}.pdf`, await buildPdfBytes(ok));
+        zip.file(`capital-gains-${year}.xlsx`, XLSX.write(buildWorkbook(ok), { bookType: 'xlsx', type: 'array' }));
+        if (lastImport) zip.file(lastImport.name, lastImport.buf);
+        zip.file('explanation.txt', explanationText(ok));
+        zip.file('backup.json', JSON.stringify(Core.makeBackup(profile, ok.map(it => it.lot)), null, 2));
+        const blob = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+        clearTimeout(t);
+        download(blob, `form-1399-package-${year}.zip`, 'application/zip');
+        setMsg(msg, `ירדה חבילה עם ${lastImport ? '5' : '4'} קבצים${lastImport ? '' : ' (בלי קובץ E*Trade המקורי, כי לא הועלה במושב הזה)'}.`, lastImport ? 'ok' : 'warn');
+      } catch (e) {
+        clearTimeout(t);
+        console.error(e);
+        setMsg(msg, 'יצירת החבילה נכשלה. אפשר לנסות שוב.', 'err', { actions: [{ label: 'ניסיון חוזר', run: onZip }], details: errDetails(e) });
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ install as app (home-screen icon)
+
+  function bindInstall() {
+    let deferred = null;
+    const btn = $('#install-app');
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; btn.hidden = false; });
+    window.addEventListener('appinstalled', () => { btn.hidden = true; deferred = null; toast('האפליקציה הותקנה במסך הבית'); });
+    btn.addEventListener('click', async () => {
+      if (!deferred) return;
+      deferred.prompt();
+      await deferred.userChoice.catch(() => null);
+      deferred = null;
+      btn.hidden = true;
+    });
   }
 
   // ------------------------------------------------------------ theme (auto / light / dark)
@@ -993,6 +1153,16 @@
     $('#preview-pdf').addEventListener('click', onPreview);
     $('#preview-dl').addEventListener('click', onPdf);
     $('#dl-xlsx').addEventListener('click', onXlsx);
+    $('#dl-zip').addEventListener('click', onZip);
+    $('#backup-save').addEventListener('click', downloadBackup);
+    $('#backup-load').addEventListener('click', () => $('#backup-file').click());
+    $('#backup-file').addEventListener('change', e => { onBackupFile(e.target.files[0]); e.target.value = ''; });
+    const rd = $('#restore-dialog');
+    $('#restore-replace').addEventListener('click', () => { rd.close(); applyRestore('replace'); });
+    $('#restore-merge').addEventListener('click', () => { rd.close(); applyRestore('merge'); });
+    rd.addEventListener('click', e => { if (e.target === rd || e.target.closest('[data-close]')) rd.close(); });
+    rd.addEventListener('close', () => { pendingRestore = null; }); // replace/merge already consumed it synchronously
+    bindInstall();
     let resizeTimer;
     window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 150); });
     render();

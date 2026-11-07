@@ -169,3 +169,32 @@ test('order text paste extracts date and 24h time', () => {
   assert.deepEqual(Core.parseOrderText('12:10 AM'), { date: null, time: '00:10' });
   assert.deepEqual(Core.parseOrderText('nothing here'), { date: null, time: null });
 });
+
+test('backup round-trip never contains the ID number and restores lots', () => {
+  const lots = [{ id: 7, symbol: 'qcom', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', timeSold: '11:02', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '' },
+                { symbol: 'X', qty: NaN, dateAcquired: '', dateSold: '2026-01-01', proceedsUsd: NaN, costUsd: 5 }];
+  const b = Core.makeBackup({ name: 'A', idNumber: '123456782', belonging: '2' }, lots, new Date('2026-11-07T10:00:00Z'));
+  const text = JSON.stringify(b);
+  assert.ok(!text.includes('123456782'));
+  assert.ok(!text.includes('"id"'));
+  const back = Core.parseBackup(text);
+  assert.equal(back.lots.length, 2);
+  assert.equal(back.lots[0].symbol, 'QCOM');
+  assert.equal(back.lots[0].proceedsUsd, 3938.96);
+  assert.ok(Number.isNaN(back.lots[1].qty));
+  assert.deepEqual(back.profile, { name: 'A', belonging: '2' });
+});
+
+test('backup parsing rejects foreign files', () => {
+  assert.throws(() => Core.parseBackup('not json'), /JSON/);
+  assert.throws(() => Core.parseBackup('{"lots":[]}'), /גיבוי/);
+});
+
+test('merge skips exact duplicate lots', () => {
+  const a = { symbol: 'Q', dateAcquired: '2024-01-31', dateSold: '2026-05-11', qty: 17, proceedsUsd: 1, costUsd: 1 };
+  const b = { ...a, qty: 10 };
+  const r = Core.mergeLots([a], [a, b, b]);
+  assert.equal(r.added, 1);
+  assert.equal(r.skipped, 2);
+  assert.equal(r.merged.length, 2);
+});

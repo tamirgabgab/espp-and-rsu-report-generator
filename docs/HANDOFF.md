@@ -272,6 +272,41 @@ A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
   and OS dark guarded by `:not([data-theme=light])`.
 - **Meta tags:** `color-scheme` and the media-specific `theme-color`.
 
+## Done (session 1): UX package D
+
+Decided with the user before building.
+
+### Backup / restore
+- `Core.makeBackup`, `Core.parseBackup`, `Core.mergeLots` and `Core.lotKey`,
+  all unit tested. The format is `{app:'espp-rsu-1399', version:1, exportedAt,
+  profile, lots}`, and the profile never includes the ID number.
+- Buttons in the import card.
+- **Restoring into an empty list** loads the backup directly.
+- **Restoring into a non-empty list** opens a dialog: "החלפת הרשימה"
+  (danger) / "הוספה לרשימה" (skips exact duplicates) / Cancel, with Cancel
+  focused. An undo toast follows.
+  - Replace also restores the profile details.
+  - Merge only fills empty profile details.
+
+### ZIP package for the accountant (`#dl-zip` in the toolbar)
+- JSZip 3.10.1 is lazy-loaded.
+- Contents:
+  - the PDF;
+  - the Excel file (`buildWorkbook()`, refactored out of `onXlsx`);
+  - the original E*Trade file, when it was imported in this session
+    (`lastImport`, memory only);
+  - `explanation.txt`: Hebrew, UTF-8 BOM and CRLF, so Windows Notepad shows it
+    correctly;
+  - `backup.json`.
+
+### Home-screen app (icon only, by choice; no service worker, no offline)
+- `manifest.webmanifest` (RTL, he).
+- Icons in `assets/icons/`, generated with PIL: 192, 512, maskable 512,
+  apple-touch 180, favicon 32.
+- iOS meta tags.
+- An "התקנה כאפליקציה" button appears in the footer only when the browser
+  fires `beforeinstallprompt`.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -289,10 +324,9 @@ A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
    - add it under `assets/forms/`;
    - let the app pick the form by sale year;
    - re-calibrate `FIELD_MAP` in `src/js/pdf1399.js` with `npm run sample`.
-4. **UX package D (not started):**
-   - backup/restore of all data to a file;
-   - a ZIP for the accountant (PDF + Excel + source file);
-   - PWA installation and offline use.
+4. **Offline mode (optional):** the app installs to the home screen but
+   still needs a network connection. Offline use would need a service worker
+   that caches the app shell and the rate data.
 5. **Section 102 trustee sales.** If the trustee already withheld tax, a 1399
    may not be needed at all. Consider a per-row "tax withheld" field that is
    excluded from the advance-payment totals.
