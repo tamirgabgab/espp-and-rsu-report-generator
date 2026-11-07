@@ -2,6 +2,13 @@
 
 App: **https://tamirgabgab.github.io/espp-and-rsu-report-generator/**
 
+**Colour theme:** the switch at the top of the page offers:
+- **אוטומטי** (auto): follows your phone or computer setting;
+- **בהיר** (light);
+- **כהה** (dark).
+
+The choice is remembered in this browser.
+
 ## 1. Export your sales from E*Trade
 
 1. In E*Trade go to **Stock Plan → My Account → Gains & Losses**.

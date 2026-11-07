@@ -5,12 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>מחולל טופס 1399</title>
   <meta name="description" content="הפקת טופס 1399 (י) ממולא ממכירות ESPP ו-RSU ב-E*Trade, לפי השער היציג של בנק ישראל">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)">
+  <!-- Apply a saved theme before first paint (no flash). "auto" = follow the device. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('f1399.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { /* storage blocked: follow the device */ }
+    })();
+  </script>
   <link rel="stylesheet" href="src/css/style.css">
 </head>
 <body>
   <main class="page">
     <header class="page-header">
-      <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
+      <div class="page-header-top">
+        <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
+        <div id="theme-switch" class="segmented" role="radiogroup" aria-label="ערכת צבעים">
+          <button type="button" role="radio" data-theme-opt="auto" aria-checked="true" tabindex="0">אוטומטי</button>
+          <button type="button" role="radio" data-theme-opt="light" aria-checked="false" tabindex="-1">בהיר</button>
+          <button type="button" role="radio" data-theme-opt="dark" aria-checked="false" tabindex="-1">כהה</button>
+        </div>
+      </div>
       <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
     </header>
 

@@ -260,6 +260,18 @@ A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
     text;
   - the PDF preview shows a static A4 skeleton (no shimmer) until pages render.
 
+## Done (session 1): theme switch
+
+- **Control:** a three-state segmented control in the page header: אוטומטי /
+  בהיר / כהה. It is a radiogroup with keyboard support (`radioKeys()`).
+- **Saved choice:** `localStorage['f1399.theme']` holds the choice; "auto"
+  removes the key.
+- **No flash:** an inline script in `<head>` sets `data-theme` before first
+  paint.
+- **CSS:** the existing CSS already handled both cases: `:root[data-theme=dark]`,
+  and OS dark guarded by `:not([data-theme=light])`.
+- **Meta tags:** `color-scheme` and the media-specific `theme-color`.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -280,8 +292,7 @@ A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
 4. **UX package D (not started):**
    - backup/restore of all data to a file;
    - a ZIP for the accountant (PDF + Excel + source file);
-   - PWA installation and offline use;
-   - a manual light/dark theme toggle.
+   - PWA installation and offline use.
 5. **Section 102 trustee sales.** If the trustee already withheld tax, a 1399
    may not be needed at all. Consider a per-row "tax withheld" field that is
    excluded from the advance-payment totals.

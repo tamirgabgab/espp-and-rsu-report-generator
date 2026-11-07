@@ -877,9 +877,52 @@
     setMsg($('#export-msg'), 'קובץ ה‑Excel ירד.', 'ok');
   }
 
+  // ------------------------------------------------------------ theme (auto / light / dark)
+
+  const LS_THEME = 'f1399.theme';
+
+  function applyTheme(opt) {
+    if (opt === 'light' || opt === 'dark') document.documentElement.setAttribute('data-theme', opt);
+    else document.documentElement.removeAttribute('data-theme');
+    try { if (opt === 'auto') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, opt); } catch { /* storage blocked */ }
+    for (const b of document.querySelectorAll('#theme-switch [data-theme-opt]')) {
+      const on = b.dataset.themeOpt === opt;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+  }
+
+  /** Keyboard pattern for a radiogroup of buttons (RTL: Left = next, Right = previous). */
+  function radioKeys(group, selector, choose) {
+    group.addEventListener('keydown', e => {
+      const items = [...group.querySelectorAll(selector)];
+      const i = items.indexOf(document.activeElement);
+      if (i === -1) return;
+      const step = { ArrowLeft: 1, ArrowDown: 1, ArrowRight: -1, ArrowUp: -1 }[e.key];
+      let j = null;
+      if (step) j = (i + step + items.length) % items.length;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = items.length - 1;
+      if (j === null) return;
+      e.preventDefault();
+      choose(items[j]);
+    });
+  }
+
+  function bindTheme() {
+    const group = $('#theme-switch');
+    let saved = 'auto';
+    try { saved = localStorage.getItem(LS_THEME) || 'auto'; } catch { /* default */ }
+    applyTheme(saved);
+    const choose = b => { applyTheme(b.dataset.themeOpt); b.focus(); };
+    group.addEventListener('click', e => { const b = e.target.closest('[data-theme-opt]'); if (b) choose(b); });
+    radioKeys(group, '[data-theme-opt]', choose);
+  }
+
   // ------------------------------------------------------------ init
 
   function init() {
+    bindTheme();
     bindProfile();
     bindEditor();
     bindDropzone();
