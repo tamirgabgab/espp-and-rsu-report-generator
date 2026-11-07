@@ -40,7 +40,7 @@
       const major = Math.abs(v * 10 - Math.round(v * 10)) < 1e-6 && Math.round(v * 10) % 2 === 0;
       el('line', { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: 'var(--grid)', 'stroke-width': major ? 1 : 0.5 }, svg);
       if (major) {
-        const t = el('text', { x: m.l - 6, y: yy + 4, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--muted)' }, svg);
+        const t = el('text', { x: m.l - 6, y: yy + 4, 'text-anchor': 'end', 'font-size': 12, fill: 'var(--muted)' }, svg);
         t.textContent = v.toFixed(1);
       }
     }
@@ -53,7 +53,7 @@
       if (Date.parse(d) < t0) continue;
       const xx = x(d);
       el('line', { x1: xx, x2: xx, y1: m.t, y2: H - m.b, stroke: 'var(--grid)', 'stroke-width': 0.5 }, svg);
-      const t = el('text', { x: xx, y: H - 8, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' }, svg);
+      const t = el('text', { x: xx, y: H - 8, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--muted)' }, svg);
       t.textContent = String(yr);
     }
     // Line.

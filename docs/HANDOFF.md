@@ -209,6 +209,29 @@ A UX audit ran against the 19 VectorLab skills. Priority 1 fixes:
 - **Reduced motion:** `scrollToEl()` uses instant scroll when
   `prefers-reduced-motion: reduce` is set.
 
+## Done (session 1, UX audit, priority 2: design system)
+
+- **Type scale:** 12 (meta) / 14 (secondary) / 16 (body) / 20 / 24 px only.
+  Weights are 400 and 600 only; browser-default bold elements are pinned to
+  600, and `<sub>` is 12px. Measured at 375 and 1280: sizes {12, 14, 16, 20,
+  24}, weights {400, 600}.
+- **Spacing:** padding, margin and gap sit on an 8px grid, with 4px for micro
+  gaps. Prose is capped at 72ch.
+- **Surfaces:**
+  - light shadow is `0 4px 16px rgba(0,0,0,.07)`;
+  - dark mode uses an inset edge highlight instead of an outer shadow;
+  - dialogs, toasts and preview pages have a 1px border;
+  - toasts use the surface colour.
+- **Viewports:**
+  - one narrow breakpoint, `max-width: 767.98px`, with tokens `--vp-*`;
+  - `max-width: var(--vp-wide)` only on `main.page`, so the page header and
+    footer moved inside `main`;
+  - the sticky bar is full-width chrome with inner padding;
+  - every `:hover` rule sits inside `@media (hover: hover)`.
+- **Motion:** no colour transitions. The toast enters with opacity/transform
+  over 200ms ease-out, and only when reduced motion is off.
+- **Chart:** labels at 12px.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust

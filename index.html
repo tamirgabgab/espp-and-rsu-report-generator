@@ -8,14 +8,12 @@
   <link rel="stylesheet" href="src/css/style.css">
 </head>
 <body>
-  <header class="page-header">
-    <div class="wrap">
+  <main class="page">
+    <header class="page-header">
       <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
       <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
-    </div>
-  </header>
+    </header>
 
-  <main class="wrap">
     <!-- Result first: headline numbers (hidden until there is at least one valid lot) -->
     <section id="hero" class="hero" aria-label="תוצאה" hidden>
       <div class="tile">
@@ -161,15 +159,15 @@
       <p class="hint" id="export-scope"></p>
       <div id="export-msg" class="msg" role="status" aria-live="polite"></div>
     </section>
-  </main>
 
-  <footer class="wrap foot">
-    <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
-  </footer>
+    <footer class="foot">
+      <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
+    </footer>
+  </main>
 
   <!-- Sticky result bar -->
   <div id="sticky" class="sticky-bar" hidden>
-    <div class="wrap sticky-inner">
+    <div class="sticky-inner">
       <div class="sticky-nums">
         <span>רווח ריאלי <b id="s-net"></b></span>
         <span>מס <b id="s-tax"></b></span>
