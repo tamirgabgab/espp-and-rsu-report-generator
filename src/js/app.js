@@ -505,9 +505,9 @@
   let editingId = null;
   const F = name => form.elements[name];
 
-  function openEditor(id) {
+  function openEditor(id, prefill) {
     clearTimeout(draftTimer); // a pending save belongs to the previous session
-    const lot = id ? lots.find(l => l.id === id) : blankLot();
+    const lot = id ? lots.find(l => l.id === id) : { ...blankLot(), ...(prefill || {}) };
     editingId = id || null;
     $('#lot-dialog-title').textContent = id ? 'עריכת עסקה' : 'עסקה חדשה';
     for (const k of ['symbol', 'planType', 'dateAcquired', 'dateSold', 'timeSold', 'rateBuy', 'rateSell', 'grantDate', 'avg30']) F(k).value = lot[k] ?? '';
@@ -762,13 +762,8 @@
   async function importFile(file) {
     const msg = $('#import-msg');
     if (!file) return;
-    // PDF and images are not tables: say so instead of "the file is empty".
-    if (/\.(pdf|png|jpe?g|gif|webp|heic)$/i.test(file.name) || /^(image\/|application\/pdf)/.test(file.type)) {
-      setMsg(msg, `הקובץ ${file.name} הוא PDF או תמונה, והכלי קורא כרגע רק קובצי Excel או CSV. ב‑E*Trade מורידים את הדוח דרך Download ואז Download Expanded, או מוסיפים את העסקה ידנית.`, 'err', {
-        actions: [{ label: 'בחירת קובץ אחר', run: () => $('#file').click() }, { label: 'הוספת עסקה ידנית', run: () => openEditor(null) }],
-      });
-      return;
-    }
+    // PDF and images (screenshots, confirmations): read the text, then review before adding.
+    if (window.DocImport && window.DocImport.isDocument(file)) { importDocument(file); return; }
     try {
       const buf = await file.arrayBuffer();
       lastImport = { name: file.name, buf };
@@ -793,6 +788,141 @@
         actions: [{ label: 'בחירת קובץ אחר', run: () => $('#file').click() }], details: errDetails(e),
       });
     }
+  }
+
+  // ------------------------------------------------------------ PDF / image import (review before adding)
+
+  const docDlg = () => $('#doc-dialog');
+  let docState = null; // {file, buf, lots, hints}
+
+  function docStatus(text, kind = '') {
+    const el = $('#doc-status');
+    el.className = `msg ${kind}`;
+    el.textContent = text;
+  }
+
+  const docField = (i, key, label, value, type = 'text', extra = '') => `<div class="field"><label for="doc-${key}-${i}">${label}</label>
+    <input id="doc-${key}-${i}" data-doc="${i}" data-k="${key}" type="${type}" ${type === 'number' ? 'inputmode="decimal" step="any" min="0"' : ''} ${extra} value="${esc(value ?? '')}"></div>`;
+
+  function renderDocLots() {
+    const { lots: found } = docState;
+    const n = v => (isFinite(v) ? v : '');
+    $('#doc-lots').innerHTML = found.map((l, i) => `<article class="sim-card doc-card">
+        <label class="check"><input type="checkbox" data-doc-on="${i}" checked> <span><b><bdi>${esc(l.symbol || '—')} ${esc(l.planType || '')}</bdi></b> · נמכרה ${Core.formatDateIL(l.dateSold) || '—'}</span></label>
+        <div class="grid grid-2">
+          ${docField(i, 'symbol', 'סימול', l.symbol, 'text', 'dir="ltr"')}
+          <div class="field"><label for="doc-planType-${i}">תוכנית</label><select id="doc-planType-${i}" data-doc="${i}" data-k="planType">${['ESPP', 'RSU', 'Options', 'אחר'].map(o => `<option${o === l.planType ? ' selected' : ''}>${o}</option>`).join('')}</select></div>
+          ${docField(i, 'qty', 'כמות', n(l.qty), 'number')}
+          ${docField(i, 'dateAcquired', l.planType === 'RSU' ? 'תאריך הבשלה' : 'תאריך רכישה', l.dateAcquired, 'date')}
+          ${docField(i, 'dateSold', 'תאריך מכירה', l.dateSold, 'date')}
+          ${docField(i, 'proceedsUsd', 'תמורה ($)', n(l.proceedsUsd), 'number')}
+          ${docField(i, 'costUsd', 'עלות ($) · Adjusted Cost Basis', n(l.costUsd), 'number')}
+          ${l.planType === 'RSU' ? docField(i, 'grantDate', 'תאריך הענקה', l.grantDate, 'date') : docField(i, 'paidUsd', 'סכום ששילמת ($)', n(l.paidUsd), 'number')}
+        </div>
+      </article>`).join('');
+    const count = found.length;
+    $('#doc-add').hidden = !count;
+    $('#doc-add').textContent = count === 1 ? 'הוספת העסקה' : `הוספת ${count} עסקאות`;
+    $('#doc-manual').hidden = !!count;
+  }
+
+  async function importDocument(file) {
+    const d = docDlg();
+    docState = { file, lots: [], hints: null };
+    $('#doc-title').textContent = `קריאת ${file.name}`;
+    $('#doc-lots').innerHTML = '';
+    $('#doc-warn').innerHTML = '';
+    $('#doc-text').textContent = '';
+    $('#doc-text-wrap').hidden = true;
+    $('#doc-add').hidden = true;
+    $('#doc-manual').hidden = true;
+    docStatus('מכין את הקריאה…');
+    d.showModal();
+    try {
+      const buf = await file.arrayBuffer();
+      docState.buf = buf;
+      const res = await window.DocImport.read(new File([buf], file.name, { type: file.type }), p => {
+        if (p.step === 'ocr') docStatus(`מזהה את הטקסט${p.pages > 1 ? `, עמוד ${p.page} מתוך ${p.pages}` : ''}${p.passes > 1 ? `, קריאה ${p.pass} מתוך ${p.passes}` : ''}… ${p.pct}%`);
+        else docStatus('טוען את מנוע זיהוי הטקסט. בפעם הראשונה זה לוקח כמה שניות…');
+      });
+      if (docState.file !== file) return; // a newer file replaced this one
+      const parsed = Core.bestGainsParse(res.texts, { symbols: Object.keys(PRICES) });
+      docState.lots = parsed.lots;
+      $('#doc-text').textContent = parsed.text;
+      $('#doc-text-wrap').hidden = false;
+      if (parsed.lots.length) {
+        docStatus(`${res.method === 'ocr' ? 'הטקסט זוהה מהתמונה' : 'הטקסט נקרא מה‑PDF'}. ${parsed.lots.length === 1 ? 'נמצאה מכירה אחת' : `נמצאו ${parsed.lots.length} מכירות`}. כדאי לבדוק כל שדה מול המסמך לפני ההוספה.`, 'ok');
+        $('#doc-warn').innerHTML = parsed.warnings.map(w => `<li>${esc(w)}</li>`).join('');
+      } else {
+        docState.hints = Core.parseSaleHints(parsed.text);
+        const h = docState.hints;
+        const got = [h.dateSold && `תאריך ${Core.formatDateIL(h.dateSold)}`, isFinite(h.qty) && `כמות ${h.qty}`, isFinite(h.proceedsUsd) && `תמורה ${usd(h.proceedsUsd)}$`].filter(Boolean);
+        docStatus(`לא נמצאה במסמך טבלת Gains & Losses.${got.length ? ` זוהו: ${got.join(', ')}. אפשר לפתוח עסקה חדשה עם הנתונים האלה ולהשלים את השאר.` : ' אפשר להוסיף את העסקה ידנית.'}`, 'warn');
+      }
+      renderDocLots();
+    } catch (e) {
+      console.error(e);
+      docStatus(e.userMessage || 'קריאת המסמך נכשלה. אפשר לנסות שוב, או להוסיף את העסקה ידנית.', 'err');
+      $('#doc-manual').hidden = false;
+    }
+  }
+
+  function addDocLots() {
+    if (!docState) return;
+    const read = (i, k) => { const el = document.querySelector(`[data-doc="${i}"][data-k="${k}"]`); return el ? el.value.trim() : ''; };
+    const num = v => (v === '' ? NaN : +v);
+    const added = [];
+    docState.lots.forEach((l, i) => {
+      if (!document.querySelector(`[data-doc-on="${i}"]`).checked) return;
+      const planType = read(i, 'planType');
+      added.push({
+        ...blankLot(), ...l, symbol: read(i, 'symbol').toUpperCase(), planType, qty: num(read(i, 'qty')),
+        dateAcquired: read(i, 'dateAcquired'), dateSold: read(i, 'dateSold'), proceedsUsd: num(read(i, 'proceedsUsd')), costUsd: num(read(i, 'costUsd')),
+        paidUsd: planType === 'RSU' ? 0 : num(read(i, 'paidUsd')), grantDate: planType === 'RSU' ? read(i, 'grantDate') : '', sec102: null,
+      });
+      delete added[added.length - 1]._check;
+    });
+    docDlg().close();
+    if (!added.length) return;
+    lots = lots.concat(added);
+    lastImport = { name: docState.file.name, buf: docState.buf };
+    yearFilter = 'all';
+    render();
+    setMsg($('#import-msg'), `נוספו ${added.length === 1 ? 'עסקה אחת' : `${added.length} עסקאות`} מהקובץ ${docState.file.name}. הנתונים זוהו אוטומטית, אז כדאי לעבור על "הצגת החישוב".`, 'ok');
+    focusLot(added[0].id, 'edit');
+  }
+
+  function bindDocDialog() {
+    const d = docDlg();
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+    d.addEventListener('close', () => { if (docState) docState.file = null; });
+    $('#doc-add').addEventListener('click', addDocLots);
+    $('#doc-manual').addEventListener('click', () => {
+      const h = (docState && docState.hints) || {};
+      d.close();
+      const prefill = {};
+      if (h.symbol) prefill.symbol = h.symbol;
+      if (h.dateSold) prefill.dateSold = h.dateSold;
+      if (isFinite(h.qty)) prefill.qty = h.qty;
+      if (isFinite(h.proceedsUsd)) prefill.proceedsUsd = h.proceedsUsd;
+      if (h.feesUsd) prefill.feesUsd = Core.round2(h.feesUsd);
+      openEditor(null, prefill);
+    });
+    // Keep the card title in sync with the symbol / plan being edited.
+    $('#doc-lots').addEventListener('change', e => {
+      const i = e.target.dataset.doc;
+      if (i === undefined || !docState) return;
+      const k = e.target.dataset.k;
+      if (k === 'planType') {
+        // Re-render so RSU shows the grant date and ESPP the amount paid; keep the edits already typed.
+        docState.lots.forEach((l, j) => {
+          for (const el of document.querySelectorAll(`[data-doc="${j}"]`)) l[el.dataset.k] = el.type === 'number' ? (el.value === '' ? NaN : +el.value) : el.value;
+        });
+        renderDocLots();
+        const again = document.querySelector(`[data-doc="${i}"][data-k="planType"]`);
+        if (again) again.focus();
+      }
+    });
   }
 
   function bindDropzone() {
@@ -1324,6 +1454,7 @@
     bindProfile();
     bindEditor();
     bindDropzone();
+    bindDocDialog();
     $('#lots-body').addEventListener('click', onListClick);
     $('#lots-cards').addEventListener('click', onListClick);
     const chooseYear = year => {
@@ -1361,8 +1492,8 @@
     $('#empty-upload').addEventListener('click', () => $('#file').click());
     // Touch devices cannot drag files: say "choose" instead of "drag".
     if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
-      document.querySelector('.dz-title').textContent = 'בחירת קובץ Excel מ‑E*Trade';
-      document.querySelector('.dz-sub').innerHTML = 'הקובץ <bdi>G&amp;L_Expanded.xlsx</bdi> או CSV';
+      document.querySelector('.dz-title').textContent = 'בחירת קובץ או צילום מסך מ‑E*Trade';
+      document.querySelector('.dz-sub').textContent = 'קובץ Excel, \u200FCSV, \u200FPDF או תמונה';
     }
     // Delete all: named confirmation first (Cancel focused), then an undo toast.
     const cd = $('#confirm-dialog');

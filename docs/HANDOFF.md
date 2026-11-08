@@ -438,6 +438,38 @@ Built:
 
 All passed, with no JS errors. `pd.js` and `p1.js` pass too.
 
+## Done (session 2): PDF and image import (OCR)
+
+Decided with the user:
+- the documents to read are E*Trade screenshots, trade confirmations and
+  trustee reports;
+- reading uses in-browser OCR;
+- the user sent a sample: a screenshot of the expanded G&L page saved as an
+  image-only PDF.
+
+Built:
+- **Reading:** `src/js/docimport.js`. Text PDFs go through pdf.js. Scans and
+  images go through Tesseract.js 5.1.1, vendored in `vendor/tesseract/` with
+  the English `best_int` model, lazy-loaded. Each image gets three OCR passes
+  with upscaling, grey, a contrast stretch and sharpening.
+- **Parsing:**
+  - `Core.parseGainsText` reads the G&L layout;
+  - `Core.bestGainsParse` merges the passes field by field, using the
+    cross-checks (cost vs. FMV, ESPP purchase price within 50%–100% of the
+    FMV);
+  - `Core.snapSymbol` fixes misread tickers against the known ones;
+  - `Core.parseSaleHints` is the fallback that prefills the editor.
+- **Review dialog** `#doc-dialog`: editable cards per sale, warnings, and the
+  raw text. "הוספת העסקה" adds the sales after review.
+- **On the user's sample:** every field was read correctly, including the
+  purchase price, which first needed the field-by-field merge. The sample is
+  not in the repo; the tests use synthetic text.
+- **Demo values:** the ESPP purchase price in the demos is illustrative. Real
+  ESPP plans often use a lookback, buying at 85% of the lower of the
+  offering-start and purchase-date prices.
+- **Still needed:** samples of a trade confirmation and a trustee report.
+  Only the fallback hints handle them today, and there is no Hebrew OCR model.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust

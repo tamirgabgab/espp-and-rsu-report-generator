@@ -718,6 +718,206 @@
     return { holdings, warnings };
   }
 
+  // ---------------------------------------------------------------- text from PDF / OCR
+
+  const DATE_RE = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g;
+  const MONEY_RE = /\(?-?\$\s?-?\d[\d,]*(?:\.\d{1,2})?\)?/g;
+  const DETAIL_LABELS = [
+    ['Grant Date FMV', 'grantFmv', 'money'], ['Purchase Date FMV', 'purchaseFmv', 'money'], ['Vest Date FMV', 'vestFmv', 'money'],
+    ['Purchase Price', 'purchasePrice', 'money'], ['Discount Amount', 'discount', 'money'],
+    ['Grant Date', 'grantDate', 'date'], ['Purchase Date', 'purchaseDate', 'date'], ['Vest Date', 'vestDate', 'date'],
+    ['Order Type', 'orderType', 'text'], ['Covered Status', 'covered', 'text'], ['Qualified Plan', 'qualified', 'text'], ['Disposition Type', 'disposition', 'text'],
+  ];
+
+  const tokensOf = line => {
+    const out = [];
+    for (const m of line.matchAll(DATE_RE)) out.push({ at: m.index, kind: 'date', v: isoFromParts(+m[3], +m[1], +m[2]) });
+    for (const m of line.matchAll(MONEY_RE)) out.push({ at: m.index, kind: 'money', v: parseMoney(m[0]) });
+    return out.filter(t => t.v !== null && !Number.isNaN(t.v)).sort((a, b) => a.at - b.at);
+  };
+
+  /** Labels found in a line, in order (longest match wins, so "Grant Date FMV" beats "Grant Date"). */
+  function labelsIn(line) {
+    const low = line.toLowerCase();
+    const used = [];
+    const found = [];
+    for (const [label, key, kind] of [...DETAIL_LABELS].sort((a, b) => b[0].length - a[0].length)) {
+      let from = 0;
+      for (;;) {
+        const i = low.indexOf(label.toLowerCase(), from);
+        if (i === -1) break;
+        from = i + 1;
+        if (used.some(([a, b]) => i < b && i + label.length > a)) continue;
+        used.push([i, i + label.length]);
+        found.push({ at: i, key, kind });
+      }
+    }
+    return found.sort((a, b) => a.at - b.at);
+  }
+
+  // A sale row of the E*Trade "Gains & Losses" page: SYMBOL Sell PLAN QTY DATE ... DATE $PROCEEDS ...
+  const ROW_RE = /\b([A-Za-z][A-Za-z.]{0,5})\s+Sell\s+([A-Za-z ]{2,20}?)\s+([\d,]+(?:\.\d+)?)\s+(\d{1,2}\/\d{1,2}\/\d{4})/;
+
+  /**
+   * Parse the text of an E*Trade Gains & Losses page (a screenshot read with OCR,
+   * or a PDF's text). Each sale row gives symbol, plan, quantity, dates, proceeds
+   * and Adjusted Cost Basis; the expanded details under it give the purchase
+   * price, grant date and fair market values.
+   * @returns {{lots: object[], warnings: string[]}}
+   */
+  function editDistance(a, b) {
+    const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    return dp[a.length][b.length];
+  }
+
+  /** OCR misreads a ticker now and then (QCOM -> QCCOM): snap to a known ticker when it is close. */
+  function snapSymbol(sym, known = []) {
+    const up = sym.toUpperCase();
+    if (!known.length || known.includes(up)) return up;
+    let best = null, bestD = 3;
+    for (const k of known) { const d = editDistance(up, k); if (d < bestD) { best = k; bestD = d; } }
+    return best && bestD <= 2 ? best : up;
+  }
+
+  function parseGainsText(text, { symbols = [] } = {}) {
+    const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rows = [];
+    lines.forEach((line, i) => { const m = line.match(ROW_RE); if (m) rows.push({ i, m }); });
+    const lots = [];
+    const warnings = [];
+    rows.forEach((row, r) => {
+      const { i, m } = row;
+      const end = r + 1 < rows.length ? rows[r + 1].i : lines.length;
+      const line = lines[i];
+      const toks = tokensOf(line.slice(m.index));
+      const dates = toks.filter(t => t.kind === 'date');
+      const dateAcquired = dates[0] ? dates[0].v : null;
+      const dateSold = dates[1] ? dates[1].v : null;
+      const soldAt = dates[1] ? dates[1].at : Infinity;
+      const moneyBefore = toks.filter(t => t.kind === 'money' && t.at < soldAt);
+      const moneyAfter = toks.filter(t => t.kind === 'money' && t.at > soldAt);
+      // Adjusted Cost Basis: between the two dates, or on its own line just above (a two-line cell).
+      let cost = moneyBefore.length ? moneyBefore[moneyBefore.length - 1].v : NaN;
+      if (!isFinite(cost)) {
+        for (let k = i - 1; k >= Math.max(0, i - 2); k--) {
+          // A line that is only an amount (OCR may add a stray symbol for the "?" icon).
+          const only = lines[k].match(/^(\(?-?\$\s?[\d,]+(?:\.\d{1,2})?\)?)\s*\S{0,2}$/);
+          if (only) { cost = parseMoney(only[1]); break; }
+        }
+      }
+      const details = {};
+      for (let k = i + 1; k < end; k++) {
+        if (/^totals?\b/i.test(lines[k])) break;
+        const labels = labelsIn(lines[k]);
+        if (!labels.length || k + 1 >= end) continue;
+        const typed = labels.filter(l => l.kind !== 'text');
+        const vals = tokensOf(lines[k + 1]);
+        let v = 0;
+        for (const l of typed) {
+          while (v < vals.length && vals[v].kind !== l.kind) v++;
+          if (v < vals.length) details[l.key] = vals[v++].v;
+        }
+      }
+      const planType = normalizePlan(m[2]);
+      const qty = parseMoney(m[3]);
+      const fmvShare = planType === 'RSU' ? details.vestFmv : details.purchaseFmv;
+      if (!isFinite(cost) && isFinite(fmvShare) && isFinite(qty)) cost = round2(fmvShare * qty); // no cost cell read
+      const lot = {
+        symbol: snapSymbol(m[1], symbols), planType, qty, dateAcquired, dateSold,
+        proceedsUsd: moneyAfter.length ? moneyAfter[0].v : NaN, costUsd: cost, feesUsd: 0,
+        paidUsd: planType === 'ESPP' && isFinite(details.purchasePrice) && isFinite(qty) ? round2(details.purchasePrice * qty) : planType === 'RSU' ? 0 : NaN,
+        grantDate: planType === 'RSU' ? details.grantDate || '' : '',
+        order: (lines.slice(i, end).join(' ').match(/Order\W{0,3}\s*(\d{6,})/i) || [])[1] || '',
+        timeSold: '',
+      };
+      lot._check = { fmv: fmvShare, purchasePrice: details.purchasePrice };
+      lots.push(lot);
+    });
+    return { lots, warnings: lots.length ? lotWarnings(lots) : ['לא נמצאו בטקסט שורות מכירה (Sell) עם תאריכים'] };
+  }
+
+  /** Cross-checks of one lot read from a document: {cost, paid, missing} problem flags. */
+  function lotProblems(lot) {
+    const c = lot._check || {};
+    const fmv = c.fmv;
+    return {
+      // Adjusted Cost Basis per share should match the purchase / vest FMV.
+      cost: isFinite(fmv) && isFinite(lot.costUsd) && lot.qty > 0 && Math.abs(lot.costUsd / lot.qty - fmv) > 0.02,
+      // An ESPP purchase price is a discount of up to ~15-50% on the FMV.
+      paid: lot.planType === 'ESPP' && isFinite(c.purchasePrice) && isFinite(fmv) && (c.purchasePrice > fmv || c.purchasePrice < fmv * 0.5),
+      missing: !lot.dateAcquired || !lot.dateSold || !isFinite(lot.proceedsUsd) || !isFinite(lot.costUsd),
+    };
+  }
+
+  function lotWarnings(lots) {
+    const out = [];
+    for (const lot of lots) {
+      const p = lotProblems(lot), c = lot._check || {}, at = `${lot.symbol} ${D_(lot.dateSold)}`;
+      if (p.cost) out.push(`${at}: העלות (${lot.costUsd}) לא מתאימה לשווי למניה (${c.fmv} × ${lot.qty}). כדאי לבדוק.`);
+      if (p.paid) out.push(`${at}: מחיר הרכישה (${c.purchasePrice}) נראה לא סביר מול השווי ביום הרכישה (${c.fmv}). כדאי לבדוק.`);
+      if (p.missing) out.push(`${lot.symbol}: חלק מהשדות לא זוהו. כדאי להשלים אותם.`);
+    }
+    return out;
+  }
+
+  /**
+   * OCR is run more than once on a screenshot (different scaling); keep the
+   * reading that found the most sales with the fewest problems.
+   */
+  function bestGainsParse(texts, opts) {
+    const all = texts.map(text => ({ text, ...parseGainsText(text, opts) }));
+    let best = null;
+    for (const r of all) {
+      const score = r.lots.length * 10 - r.warnings.length;
+      if (!best || score > best.score) best = { ...r, score };
+    }
+    if (!best) return { lots: [], warnings: [], text: '', score: 0 };
+    // Field by field: a value that failed a cross-check is replaced by another reading of the same sale that passed it.
+    const same = (a, b) => a.dateSold === b.dateSold && a.qty === b.qty;
+    for (const lot of best.lots) {
+      const others = all.flatMap(r => r.lots).filter(o => o !== lot && same(o, lot));
+      if (lotProblems(lot).paid) {
+        const o = others.find(x => !lotProblems(x).paid && isFinite(x._check.purchasePrice));
+        if (o) { lot.paidUsd = o.paidUsd; lot._check.purchasePrice = o._check.purchasePrice; }
+      }
+      if (lotProblems(lot).cost) {
+        const o = others.find(x => !lotProblems(x).cost);
+        if (o) lot.costUsd = o.costUsd;
+      }
+    }
+    best.warnings = lotWarnings(best.lots);
+    return best;
+  }
+  const D_ = iso => (iso ? formatDateIL(iso) : '—');
+
+  /**
+   * Fallback for documents that are not a G&L page (for example a trade
+   * confirmation): pull the sale-side facts that can be found, to prefill a lot.
+   */
+  function parseSaleHints(text) {
+    const t = String(text || '');
+    const near = (re, kind) => {
+      const m = t.match(re);
+      if (!m) return kind === 'date' ? null : NaN;
+      const tail = t.slice(m.index + m[0].length, m.index + m[0].length + 60);
+      if (kind === 'date') { const d = tail.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); return d ? parseDate(d[0]) : null; }
+      const n = tail.match(/-?\$?\s?[\d,]+(?:\.\d+)?/);
+      return n ? parseMoney(n[0]) : NaN;
+    };
+    const sym = t.match(/\b(?:Symbol|Security)\W{0,3}\s*([A-Z]{1,5})\b/);
+    return {
+      symbol: sym ? sym[1] : '',
+      dateSold: near(/Trade\s*Date/i, 'date'),
+      qty: near(/(?:Quantity|Shares)(?:\s*Sold)?/i, 'num'),
+      proceedsUsd: near(/Net\s*(?:Amount|Proceeds)/i, 'num'),
+      feesUsd: (near(/Commission/i, 'num') || 0) + (near(/(?:SEC|Transaction|Supplemental)\s*Fee/i, 'num') || 0),
+    };
+  }
+
   // ---------------------------------------------------------------- sale simulator
 
   /** Turn a holding (per-share values) into a lot sold at `price` on `date`. */
@@ -767,6 +967,6 @@
     closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,
     makeBackup, parseBackup, mergeLots, lotKey, cleanHolding,
     avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
-    parseHoldingsRows, holdingToLot, simulateHolding,
+    parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, snapSymbol,
   };
 });

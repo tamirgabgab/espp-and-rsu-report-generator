@@ -132,7 +132,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 }
 .icon-btn[data-tip]:focus-visible::after { opacity: 1; visibility: visible; }
 @media (hover: hover) { .icon-btn[data-tip]:hover::after { opacity: 1; visibility: visible; } }
-.drawer-head .icon-btn[data-tip]::after { bottom: auto; top: calc(100% + 6px); left: auto; right: 0; transform: none; }
+.drawer-head .icon-btn[data-tip]::after { bottom: auto; top: calc(100% + 6px); left: 0; right: auto; transform: none; }
 
 .icon-btn svg { width: 18px; height: 18px; }
 
@@ -405,6 +405,12 @@ input:disabled { opacity: .6; }
 .fx-legend li { display: flex; align-items: center; gap: 8px; }
 .fx-legend b { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 .fx-legend .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+
+/* ------------------------------------------------------------------ document import */
+.doc-lots { display: grid; gap: 12px; margin-top: 12px; }
+.doc-card .check { margin-bottom: 8px; }
+.doc-text { white-space: pre-wrap; font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 8px 12px; max-height: 240px; overflow: auto; }
+#doc-warn:empty { display: none; }
 
 /* ------------------------------------------------------------------ narrow (max-width: 767.98px) */
 @media (max-width: 767.98px) {

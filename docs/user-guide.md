@@ -16,6 +16,21 @@ The choice is remembered in this browser.
 3. Click **Download → Download Expanded**. You get `G&L_Expanded.xlsx`.
 4. Upload this file to the app as-is. CSV exports work too.
 
+**PDF or screenshot instead of Excel.** You can also upload a PDF or an image
+(PNG/JPEG) of the Gains & Losses page, for example a screenshot with the sale
+row expanded. The app reads the text in your browser (OCR for images and
+scanned PDFs; nothing is uploaded), then shows a review window with every
+field it found. Check them against the document, fix anything that is wrong,
+and click "הוספת העסקה". Two cross-checks warn you when a value looks
+misread:
+- the cost per share should match the market price on the purchase or vest
+  date;
+- the ESPP purchase price should be 50%–100% of that market price.
+
+A document that is not a Gains & Losses page, such as a trade confirmation,
+can prefill a new lot with the sale date, quantity, proceeds and fees it
+finds.
+
 Each `Sell` row in the file is one **lot**: a quantity bought on one date and
 sold on one date. A single sale order that used shares from several purchase
 dates appears as several rows, and each becomes its own form.

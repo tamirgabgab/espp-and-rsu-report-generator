@@ -306,3 +306,47 @@ test('backup keeps the 102 fields and the holdings', () => {
   assert.equal(back.holdings[0].symbol, 'X');
   assert.ok(Number.isNaN(back.holdings[0].costPerShare));
 });
+
+// Synthetic OCR text shaped like the E*Trade Gains & Losses page (made-up numbers).
+const OCR_GL = `Opening Transaction Closing Transaction
+tol Transaction Benefit Quantity Date nga Date Total Deferred Gain/Loss Adjusted ay
+Type Type Acquired Basis Sold Proceeds Loss Gain/Loss State
+$1,111.00
+v ABCD Sell ESPP 10 02/28/2023 @ 03/15/2025 $1,500.00 $0.00 $600.00 $3890@ Long Term
+Order Type Covered Status © Qualified Plan? ® Disposition Type ® Discount Amount ® Grant Date ©
+Sell ESPP Covered Non-Qualified .- $0.00 08/31/2022
+Grant Date FMV © Purchase Date © Purchase Date FMV ® Purchase Price ©
+$100.00 02/28/2023 $111.10 $85.00
+View Order Details | View Tax Reporting Guidelines Order? 123456789
+v ABCD Sell RS 5 03/01/2024 $1,000.00 03/15/2025 $1,250.00 $0.00 $250.00 $250.00 Long Term
+Order Type Covered Status Grant Date Vest Date FMV ©
+Sell Restricted Stock Covered 03/01/2022 $200.00
+Totals 15 $2,750.00`;
+
+test('OCR text of the G&L page becomes lots', () => {
+  const r = Core.parseGainsText(OCR_GL);
+  assert.equal(r.lots.length, 2);
+  const [a, b] = r.lots;
+  assert.deepEqual([a.symbol, a.planType, a.qty, a.dateAcquired, a.dateSold, a.proceedsUsd, a.costUsd, a.paidUsd, a.order],
+    ['ABCD', 'ESPP', 10, '2023-02-28', '2025-03-15', 1500, 1111, 850, '123456789']);
+  assert.deepEqual([b.planType, b.qty, b.dateAcquired, b.costUsd, b.proceedsUsd, b.grantDate, b.paidUsd],
+    ['RSU', 5, '2024-03-01', 1000, 1250, '2022-03-01', 0]);
+  assert.equal(r.warnings.length, 0);
+  // A cost that does not match the FMV is flagged.
+  assert.equal(Core.parseGainsText(OCR_GL.replace('$1,111.00', '$1,711.00')).warnings.length, 1);
+  assert.equal(Core.parseGainsText('nothing here').lots.length, 0);
+});
+
+test('sale hints from a trade confirmation', () => {
+  const h = Core.parseSaleHints('Symbol: ABCD\nTrade Date 03/15/2025 Settlement Date 03/17/2025\nQuantity 10\nCommission $4.95 SEC Fee $0.03\nNet Amount $1,495.02');
+  assert.deepEqual([h.symbol, h.dateSold, h.qty, h.proceedsUsd, Core.round2(h.feesUsd)], ['ABCD', '2025-03-15', 10, 1495.02, 4.98]);
+});
+
+test('OCR helpers: ticker snapping and best of several readings', () => {
+  assert.equal(Core.snapSymbol('QCcoM', ['QCOM']), 'QCOM');
+  assert.equal(Core.snapSymbol('MSFT', ['QCOM']), 'MSFT');
+  const bad = OCR_GL.replace('$85.00', '$5.00');
+  const best = Core.bestGainsParse([bad, OCR_GL], { symbols: ['ABCD'] });
+  assert.equal(best.text, OCR_GL);
+  assert.equal(Core.parseGainsText(bad).warnings.length, 1); // purchase price far below the FMV
+});

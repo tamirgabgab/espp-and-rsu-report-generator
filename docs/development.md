@@ -102,6 +102,28 @@ quantity column (*Sellable Qty.* first), and prefers *Purchase* rows for ESPP
 and *Grant* rows for RSU when the file has a *Record Type* column. Adjust the
 aliases once a real file is available.
 
+## PDF and image import
+
+`src/js/docimport.js` (`window.DocImport.read`) turns an uploaded document into
+text:
+- **Text PDF:** pdf.js `getTextContent`, with the lines rebuilt by baseline.
+- **Scanned PDF or image:** the page's embedded image (or a rendering of the
+  page) goes through Tesseract.js three times, at about 2600, 3100 and 4200 px
+  wide. Each pass converts the image to grey, stretches the contrast (1st–99th
+  percentile) and, for two of the passes, sharpens it.
+
+`Core.parseGainsText` reads E*Trade's Gains & Losses layout:
+- a `SYMBOL Sell PLAN QTY DATE … DATE $PROCEEDS` row;
+- the Adjusted Cost Basis, either between the dates or on the line above;
+- the expanded detail labels, with their values on the next line, matched by
+  type.
+
+`Core.bestGainsParse` keeps the best of the OCR readings, field by field,
+using the cross-checks. Two of them are the cost against the FMV and the ESPP
+purchase price against the FMV. `Core.parseSaleHints` is the fallback for
+other documents. The tests use a synthetic OCR text: never commit a real
+statement.
+
 ## Vendor libraries
 
 They are pinned and committed under `vendor/` (see `vendor/README.md`), so the

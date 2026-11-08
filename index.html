@@ -88,9 +88,9 @@
       <h2 id="import-title"><span class="step">1</span> ייבוא עסקאות</h2>
       <label class="dropzone" id="dropzone" for="file">
         <svg class="dz-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="dz-title">גוררים לכאן את קובץ ה‑Excel מ‑E*Trade</span>
-        <span class="dz-sub">או לוחצים לבחירת קובץ · <bdi>G&amp;L_Expanded.xlsx</bdi> או CSV</span>
-        <input id="file" type="file" accept=".xlsx,.xls,.csv" class="visually-hidden">
+        <span class="dz-title">גוררים לכאן את הקובץ מ‑E*Trade</span>
+        <span class="dz-sub">או לוחצים לבחירת קובץ · Excel ‏(<bdi>G&amp;L_Expanded.xlsx</bdi>), ‏CSV, ‏PDF או צילום מסך</span>
+        <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*" class="visually-hidden">
       </label>
       <div class="actions">
         <button id="add-row" class="btn" type="button">הוספת עסקה ידנית</button>
@@ -531,6 +531,29 @@
     </form>
   </dialog>
 
+  <!-- Review what was read from a PDF or a screenshot before adding it -->
+  <dialog id="doc-dialog" class="sheet" aria-labelledby="doc-title">
+    <header class="drawer-head">
+      <h2 id="doc-title">קריאת מסמך</h2>
+      <button type="button" class="icon-btn" data-close aria-label="סגירה" data-tip="סגירה · Esc">×</button>
+    </header>
+    <div class="drawer-body">
+      <p id="doc-status" class="msg" role="status" aria-live="polite"></p>
+      <ul id="doc-warn" class="lc-issues"></ul>
+      <div id="doc-lots" class="doc-lots"></div>
+      <details id="doc-text-wrap" class="howto" hidden>
+        <summary>הטקסט שזוהה במסמך</summary>
+        <pre id="doc-text" class="doc-text" dir="ltr"></pre>
+      </details>
+      <p class="hint">הקריאה נעשית בדפדפן שלך. הקובץ לא נשלח לשום מקום ולא נשמר.</p>
+    </div>
+    <footer class="drawer-foot">
+      <button type="button" class="btn btn-primary" id="doc-add" hidden>הוספת העסקאות</button>
+      <button type="button" class="btn" id="doc-manual" hidden>פתיחת עסקה חדשה</button>
+      <button type="button" class="btn" data-close>ביטול</button>
+    </footer>
+  </dialog>
+
   <!-- PDF preview -->
   <dialog id="preview-dialog" class="sheet" aria-labelledby="preview-title">
     <header class="drawer-head">
@@ -576,6 +599,7 @@
   <script src="src/js/core.js"></script>
   <script src="src/js/pdf1399.js"></script>
   <script src="src/js/chart.js"></script>
+  <script src="src/js/docimport.js"></script>
   <script src="src/js/app.js"></script>
   <script src="src/js/sim.js"></script>
   <script src="src/js/formulas.js"></script>
