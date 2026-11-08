@@ -40,6 +40,7 @@
       <div class="view-tabs" role="tablist" aria-label="תצוגה">
         <button type="button" role="tab" id="tab-report" aria-controls="view-report" aria-selected="true" tabindex="0">דוח מכירות</button>
         <button type="button" role="tab" id="tab-sim" aria-controls="view-sim" aria-selected="false" tabindex="-1">סימולטור מכירה</button>
+        <button type="button" role="tab" id="tab-formulas" aria-controls="view-formulas" aria-selected="false" tabindex="-1">נוסחאות</button>
       </div>
     </header>
 
@@ -288,6 +289,70 @@
       </section>
     </div>
 
+    <!-- Formulas: a live calculator that substitutes numbers into the general formulas -->
+    <div id="view-formulas" role="tabpanel" aria-labelledby="tab-formulas" hidden>
+      <section class="card" id="fx-calc" aria-labelledby="fx-title">
+        <h2 id="fx-title">מחשבון נוסחאות</h2>
+        <p class="hint">בוחרים תוכנית ומסלול ומקלידים את הנתונים של מכירה אחת. השערים היציגים נמשכים אוטומטית לפי התאריכים, וכל נוסחה מוצגת קודם בצורה כללית ואחר כך עם המספרים.</p>
+        <div class="fx-case">
+          <div class="field">
+            <span class="fx-label" id="fx-plan-label">תוכנית</span>
+            <div id="fx-plan" class="segmented" role="radiogroup" aria-labelledby="fx-plan-label">
+              <button type="button" role="radio" data-plan="ESPP" aria-checked="true" tabindex="0">ESPP</button>
+              <button type="button" role="radio" data-plan="RSU" aria-checked="false" tabindex="-1">RSU</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="fx-label" id="fx-track-label">מסלול</span>
+            <div id="fx-track" class="segmented" role="radiogroup" aria-labelledby="fx-track-label">
+              <button type="button" role="radio" data-track="102" aria-checked="true" tabindex="0">102 עם נאמן</button>
+              <button type="button" role="radio" data-track="regular" aria-checked="false" tabindex="-1">בלי נאמן</button>
+            </div>
+          </div>
+          <div class="field" id="fx-fill-wrap" hidden>
+            <label for="fx-fill">מילוי מעסקה שלי</label>
+            <select id="fx-fill"></select>
+          </div>
+        </div>
+        <div class="grid" id="fx-inputs">
+          <div class="field"><label for="fx-symbol">סימול</label><input id="fx-symbol" data-fx="symbol" type="text" dir="ltr" autocapitalize="characters"></div>
+          <div class="field"><label for="fx-qty">כמות מניות</label><input id="fx-qty" data-fx="qty" type="number" inputmode="decimal" step="any" min="0"></div>
+          <div class="field" data-show="RSU"><label for="fx-grant">תאריך הענקה <bdi>(Grant)</bdi></label><input id="fx-grant" data-fx="grantDate" type="date"></div>
+          <div class="field"><label for="fx-buy" id="fx-buy-label">תאריך רכישה</label><input id="fx-buy" data-fx="buyDate" type="date"></div>
+          <div class="field" data-show="FMV"><label for="fx-fmv" id="fx-fmv-label">מחיר שוק ביום הרכישה ($ למניה)</label><input id="fx-fmv" data-fx="fmv" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-fmv-note"></p></div>
+          <div class="field" data-show="AVG"><label for="fx-avg">ממוצע 30 ימי מסחר לפני ההענקה ($ למניה)</label><input id="fx-avg" data-fx="avg30" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-avg-note"></p></div>
+          <div class="field" data-show="ESPP"><label for="fx-paid">מחיר ששילמת ($ למניה)</label><input id="fx-paid" data-fx="paid" type="number" inputmode="decimal" step="0.0001" min="0"></div>
+          <div class="field"><label for="fx-sale">תאריך מכירה</label><input id="fx-sale" data-fx="saleDate" type="date"></div>
+          <div class="field"><label for="fx-price">מחיר מכירה ($ למניה)</label><input id="fx-price" data-fx="price" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-price-note"></p></div>
+          <div class="field"><label for="fx-fees">עמלות ($ סך הכל)</label><input id="fx-fees" data-fx="fees" type="number" inputmode="decimal" step="0.01" min="0"></div>
+          <div class="field"><label for="fx-rb" id="fx-rb-label">שער ביום הרכישה</label><input id="fx-rb" data-fx="rb" type="number" inputmode="decimal" step="0.001" min="0"><p class="field-note" id="fx-rb-note"></p></div>
+          <div class="field"><label for="fx-rs">שער ביום המכירה</label><input id="fx-rs" data-fx="rs" type="number" inputmode="decimal" step="0.001" min="0"><p class="field-note" id="fx-rs-note"></p></div>
+        </div>
+        <div class="grid work-settings">
+          <div class="field">
+            <label for="fx-marginal">מס שולי משוער (%)</label>
+            <input id="fx-marginal" data-work="marginalRate" type="number" inputmode="decimal" step="1" min="0" max="60">
+          </div>
+          <label class="check"><input id="fx-ni-inc" data-work="includeNi" type="checkbox"> כולל ביטוח לאומי ומס בריאות</label>
+          <div class="field">
+            <label for="fx-ni">ביטוח לאומי ובריאות (%)</label>
+            <input id="fx-ni" data-work="niRate" type="number" inputmode="decimal" step="0.5" min="0" max="20">
+          </div>
+        </div>
+        <div class="actions"><button type="button" class="btn btn-quiet btn-sm" id="fx-reset">איפוס לדוגמה</button></div>
+      </section>
+
+      <section class="card" id="fx-result" aria-labelledby="fx-r-title">
+        <h2 id="fx-r-title">החישוב עם המספרים</h2>
+        <div id="fx-out" aria-live="polite"></div>
+      </section>
+
+      <section class="card" aria-labelledby="fx-all-title">
+        <h2 id="fx-all-title">הנוסחאות לכל ארבעת המקרים</h2>
+        <div id="fx-all" class="explain-body"></div>
+      </section>
+    </div>
+
     <footer class="foot">
       <p><button id="install-app" class="btn btn-sm" type="button" hidden>התקנה כאפליקציה</button></p>
       <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
@@ -513,5 +578,6 @@
   <script src="src/js/chart.js"></script>
   <script src="src/js/app.js"></script>
   <script src="src/js/sim.js"></script>
+  <script src="src/js/formulas.js"></script>
 </body>
 </html>

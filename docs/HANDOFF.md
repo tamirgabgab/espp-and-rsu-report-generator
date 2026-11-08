@@ -401,6 +401,43 @@ Decided with the user before building.
   upload on claude.ai (Customize → Skills), which makes the skill available in
   all projects, including cloud sessions.
 
+## Done (session 2): formulas tab, QA
+
+### Formulas tab (`src/js/formulas.js`, `#formulas`)
+Decided with the user:
+- a live calculator;
+- the estimated payroll tax for the no-trustee track;
+- a stacked bar.
+
+Built:
+- **Case choice:** two segmented radiogroups, ESPP/RSU and 102/regular.
+- **Automatic inputs:** BOI rates, the QCOM close on the purchase/vest date,
+  and the 30-day average before the grant. Every one can be typed over.
+- **"מילוי מעסקה שלי":** copies a lot from the report.
+- **Steps:** each step shows the general formula, the substitution and a note.
+- **Stacked bar:** paid / fees / marginal or payroll tax / capital-gains tax /
+  net, with the effective tax rate on the gain.
+- **Reference section:** the formulas for all four cases.
+
+### Other changes
+- Views are generalised (`VIEWS` in `app.js`), with a `hashchange` listener.
+- **Import fix:** uploading a PDF or image now says that only Excel/CSV are
+  read, and offers a manual lot. Before, it said "the file is empty".
+
+### QA
+`qa.js` (scratch) checked:
+- import of the PNG and the xlsx;
+- year chips and their keyboard handling;
+- the panel;
+- the PDF, Excel and ZIP downloads, and the preview;
+- the keyboard on the tabs;
+- the simulator and the formulas;
+- the `#formulas` link;
+- no overflow and 44px targets in all three views, at 375 and 1280, in light
+  and dark.
+
+All passed, with no JS errors. `pd.js` and `p1.js` pass too.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust

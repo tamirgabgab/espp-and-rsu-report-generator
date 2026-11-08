@@ -13,6 +13,7 @@ scripts, no bundler).
 | `src/js/chart.js` | SVG chart of the representative rate with buy/sell markers and a hover tooltip |
 | `src/js/app.js` | UI:<br>• state in localStorage<br>• year filter<br>• lot list: a table on desktop, cards below 760px<br>• edit drawer (`<dialog>`) with field validation and order-text paste<br>• the "how was it calculated" panel, with formula, substitution, rate cross-check and intraday rate<br>• headline tiles and sticky bar<br>• summary and general tax explanation<br>• chart<br>• PDF / Excel export and the pdf.js preview<br>• toasts with undo |
 | `src/js/sim.js` | The sale simulator view: holdings (localStorage `f1399.holdings`), the holdings import, and the results. It reuses `Core.simulateHolding` and a few helpers that `app.js` exposes as `window.App`. |
+| `src/js/formulas.js` | The formulas view: a live calculator for one sale (four cases: ESPP/RSU × 102/regular) built on `Core.computeLot` / `Core.computeLot102`, with step-by-step substitution and a stacked "where the money goes" bar. Inputs are kept in `f1399.formulas`. |
 | `src/css/style.css` | Styles. The colour tokens on `:root` have a dark-mode variant. |
 | `tools/update_rates.py` | Downloads all rate sources (see [exchange-rates.md](exchange-rates.md)) |
 

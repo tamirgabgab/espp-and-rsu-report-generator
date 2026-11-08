@@ -219,6 +219,28 @@ shares you have not sold yet.
 Everything is an estimate: the future price and rate are unknown, and surtax
 is not computed.
 
+## 11. Formulas
+
+The **"נוסחאות"** (formulas) tab is a live calculator for one sale:
+- **Pick the case:** ESPP or RSU, on the section 102 trustee track or without
+  a trustee.
+- **Type the numbers:** quantity, dates, prices and what you paid. The
+  representative rates and, for QCOM, the share prices fill in automatically.
+  "מילוי מעסקה שלי" copies a lot from the report.
+- **Read the result:** every step shows the general formula and then your
+  numbers:
+  - the work income and its marginal tax. On the trustee track the trustee
+    withholds it at the sale; without a trustee it was withheld from your
+    salary on the purchase or vest date (estimated here);
+  - the capital gain, converted to shekels, with the inflationary amount and
+    the real gain;
+  - a stacked bar showing where the money from the sale goes: what you paid,
+    fees, marginal tax, capital-gains tax and what is left.
+- **All four cases:** a section at the bottom lists the formulas for each case
+  side by side.
+
+Open it directly with the `#formulas` link.
+
 ## FAQ
 
 **Is a form 1399 required for every sale?**

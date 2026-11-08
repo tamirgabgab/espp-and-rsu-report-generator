@@ -382,6 +382,30 @@ input:disabled { opacity: .6; }
 .sim-later { font-size: 14px; background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; margin: 12px 0 0; }
 .sim-card .case, .sim-card .hint { margin: 12px 0 0; }
 
+/* ------------------------------------------------------------------ formulas view */
+:root { --seg-paid: #9a998f; --seg-fees: #c9c8bf; --seg-work: #eb6834; --seg-cap: #b42318; --seg-net: #0f7a3d; }
+:root[data-theme="dark"] { --seg-paid: #7d7c73; --seg-fees: #4a4a44; --seg-work: #d95926; --seg-cap: #f07a6e; --seg-net: #4cc38a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --seg-paid: #7d7c73; --seg-fees: #4a4a44; --seg-work: #d95926; --seg-cap: #f07a6e; --seg-net: #4cc38a; }
+}
+.fx-case { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 24px; margin-bottom: 16px; }
+.fx-label { font-size: 14px; color: var(--text-2); }
+#fx-fill-wrap { min-width: 240px; }
+.steps .calc.fx-general { color: var(--muted); font-size: 14px; }
+.muted { color: var(--muted); font-weight: 400; }
+.fx-bar { display: flex; height: 32px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin: 8px 0 12px; }
+.fx-bar .seg { display: block; height: 100%; min-width: 2px; }
+.fx-bar .seg + .seg { border-inline-start: 2px solid var(--surface); }
+.seg-paid { background: var(--seg-paid); }
+.seg-fees { background: var(--seg-fees); }
+.seg-work { background: var(--seg-work); }
+.seg-cap { background: var(--seg-cap); }
+.seg-net { background: var(--seg-net); }
+.fx-legend { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; font-size: 14px; }
+.fx-legend li { display: flex; align-items: center; gap: 8px; }
+.fx-legend b { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+.fx-legend .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+
 /* ------------------------------------------------------------------ narrow (max-width: 767.98px) */
 @media (max-width: 767.98px) {
   .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }

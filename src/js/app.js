@@ -358,8 +358,8 @@
     const sticky = $('#sticky');
     const show = ok.length > 0;
     hero.hidden = !show;
-    sticky.hidden = !show || currentView === 'sim';
-    document.body.classList.toggle('has-sticky', show && currentView !== 'sim');
+    sticky.hidden = !show || currentView !== 'report';
+    document.body.classList.toggle('has-sticky', show && currentView === 'report');
     if (!show) return;
     const years = groups.filter(g => g.isYear);
     const halves = groups.filter(g => !g.isYear);
@@ -762,11 +762,18 @@
   async function importFile(file) {
     const msg = $('#import-msg');
     if (!file) return;
+    // PDF and images are not tables: say so instead of "the file is empty".
+    if (/\.(pdf|png|jpe?g|gif|webp|heic)$/i.test(file.name) || /^(image\/|application\/pdf)/.test(file.type)) {
+      setMsg(msg, `הקובץ ${file.name} הוא PDF או תמונה, והכלי קורא כרגע רק קובצי Excel או CSV. ב‑E*Trade מורידים את הדוח דרך Download ואז Download Expanded, או מוסיפים את העסקה ידנית.`, 'err', {
+        actions: [{ label: 'בחירת קובץ אחר', run: () => $('#file').click() }, { label: 'הוספת עסקה ידנית', run: () => openEditor(null) }],
+      });
+      return;
+    }
     try {
       const buf = await file.arrayBuffer();
       lastImport = { name: file.name, buf };
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
-      let best = { lots: [], warnings: ['הקובץ ריק'] };
+      let best = { lots: [], warnings: ['לא נמצאה בקובץ טבלת מכירות'] };
       for (const name of wb.SheetNames) {
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '' });
         const res = Core.parseEtradeRows(rows);
@@ -856,6 +863,7 @@
         syncWorkInputs();
         render();
         if (window.Sim) window.Sim.render();
+        if (window.Formulas) window.Formulas.render();
       });
     }
   }
@@ -1262,35 +1270,46 @@
   const LS_VIEW = 'f1399.view';
   let currentView = 'report';
 
+  const VIEWS = ['report', 'sim', 'formulas'];
+
   function setView(view, focus) {
-    currentView = view === 'sim' ? 'sim' : 'report';
-    for (const [v, tab, panel] of [['report', '#tab-report', '#view-report'], ['sim', '#tab-sim', '#view-sim']]) {
+    currentView = VIEWS.includes(view) ? view : 'report';
+    for (const v of VIEWS) {
       const on = v === currentView;
-      $(tab).setAttribute('aria-selected', String(on));
-      $(tab).tabIndex = on ? 0 : -1;
-      $(panel).hidden = !on;
+      const tab = $(`#tab-${v}`);
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+      $(`#view-${v}`).hidden = !on;
     }
     try { localStorage.setItem(LS_VIEW, currentView); } catch { /* storage blocked */ }
-    if (focus) $(currentView === 'sim' ? '#tab-sim' : '#tab-report').focus();
+    if (focus) $(`#tab-${currentView}`).focus();
     render();
     if (currentView === 'sim' && window.Sim) window.Sim.render();
+    if (currentView === 'formulas' && window.Formulas) window.Formulas.render();
   }
 
   function bindViews() {
     const tabs = document.querySelector('.view-tabs');
-    tabs.addEventListener('click', e => { const t = e.target.closest('[role="tab"]'); if (t) setView(t.id === 'tab-sim' ? 'sim' : 'report', true); });
-    radioKeys(tabs, '[role="tab"]', t => setView(t.id === 'tab-sim' ? 'sim' : 'report', true));
+    const viewOf = t => t.id.replace('tab-', '');
+    tabs.addEventListener('click', e => { const t = e.target.closest('[role="tab"]'); if (t) setView(viewOf(t), true); });
+    radioKeys(tabs, '[role="tab"]', t => setView(viewOf(t), true));
     let saved = 'report';
     try { saved = localStorage.getItem(LS_VIEW) || 'report'; } catch { /* default */ }
-    if (location.hash === '#sim') saved = 'sim';
+    const hash = location.hash.slice(1);
+    if (VIEWS.includes(hash)) saved = hash;
     currentView = saved;
     setView(saved, false);
+    window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) setView(h, false); });
   }
 
   // Shared helpers for the simulator (src/js/sim.js).
   window.App = {
     PRICES, RATES, profile, toast, setMsg, confirmDestructive, download, errDetails, scrollToEl, radioKeys, esc, fmt, ils, usd, signed, L, today,
     store, persist: () => persist(),
+    /** The report's lots (copies), for "fill from my lot" in the formulas view. */
+    reportLots: () => lots.map(l => ({ ...l })),
+    sec102Of: lot => sec102Of(lot),
+    syncWorkInputs: () => syncWorkInputs(),
     /** Capital results already realised in the report, per tax year (for loss offset in the simulator). */
     realizedByYear(year) {
       const items = lots.filter(l => yearOf(l) === String(year)).map(computeItem).filter(it => it.calc.ok && !it.calc.noForm);
