@@ -12,6 +12,7 @@ tests. They are committed so the site does not depend on a CDN.
 | `tesseract/tesseract.min.js`, `tesseract/worker.min.js` | [Tesseract.js](https://github.com/naptha/tesseract.js) | 5.1.1 | Apache-2.0 ([licenses/LICENSE-tesseract.js.md](licenses/LICENSE-tesseract.js.md)) |
 | `tesseract/tesseract-core-simd-lstm.wasm.js`, `tesseract/tesseract-core-lstm.wasm.js` | [tesseract.js-core](https://github.com/naptha/tesseract.js-core) | 5.1.1 | Apache-2.0 ([licenses/LICENSE-tesseract.js-core](licenses/LICENSE-tesseract.js-core)) |
 | `tesseract/lang/eng.traineddata.gz` | [@tesseract.js-data/eng](https://www.npmjs.com/package/@tesseract.js-data/eng) (`4.0.0_best_int`) | 1.0.0 | MIT (model from tesseract-ocr/tessdata, Apache-2.0) |
+| `katex/katex.min.js`, `katex/katex.min.css`, `katex/fonts/*.woff2` | [KaTeX](https://katex.org) | 0.19.1 | MIT ([licenses/LICENSE-katex](licenses/LICENSE-katex)) |
 | `pdfjs/pdf.min.js`, `pdfjs/pdf.worker.min.js` | [pdf.js](https://github.com/mozilla/pdf.js) (pdfjs-dist) | 3.11.174 | Apache-2.0 ([licenses/LICENSE-pdfjs](licenses/LICENSE-pdfjs)) |
 
 pdf.js, JSZip and Tesseract are loaded lazily: pdf.js for the PDF preview and

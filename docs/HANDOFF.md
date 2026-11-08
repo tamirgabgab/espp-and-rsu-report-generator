@@ -470,6 +470,40 @@ Built:
 - **Still needed:** samples of a trade confirmation and a trustee report.
   Only the fallback hints handle them today, and there is no Hebrew OCR model.
 
+## Done (session 2): explanation tab, compact panel, "what if" chart
+
+Decided with the user:
+- the explanation goes in a new tab "הסבר", typeset in LaTeX;
+- the per-lot panel becomes a compact table;
+- the chart sits inside each lot's panel;
+- the draggable points are the sale, the purchase and the lookback start;
+- a moved sale is priced at the day's low and high;
+- the offering start comes from the file's Grant Date, otherwise 6 months
+  before the purchase, with a 15% discount;
+- the chart compares with the actual result and has keyboard and date-field
+  controls.
+
+Built:
+- **Explanation tab:** `src/js/explain.js`. KaTeX 0.19.1 is vendored in
+  `vendor/katex/` (woff2 fonts only, lazy-loaded). The summary's long
+  `<details>` explainer was removed and replaced with a link to the tab.
+- **Compact panel** (`panelHtml` in `app.js`): a `$ × rate = ₪` table, result
+  lines, notes, links to the formulas (`Formulas.fillFromLot`) and the
+  explanation, the what-if chart, and the rate checks.
+- **"What if" chart:** `src/js/whatif.js`, with state per lot kept in memory
+  (`whatIfState`).
+  - `Core.whatIfLots` scales the actual cost and price by the change in closes,
+    so unmoved dates reproduce the real numbers exactly.
+  - `Core.lookbackPrice`, `Core.offeringStart` and `Core.priceOn` support it.
+  - `Core.evaluateLot` returns the net amount, with an estimated payroll tax on
+    the regular track.
+- **Stock data:** stock files now include the daily `high` and `low`.
+- **New lot fields:** `offerStart` and `discountPct`, in the editor for ESPP,
+  in backups, and in the G&L and OCR imports (E*Trade's ESPP "Grant Date" is
+  the offering start).
+- **Tests:** 37 unit tests. The scratch QA passes 32/32 checks across the four
+  views, at 375 and 1280, in light and dark.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust

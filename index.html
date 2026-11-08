@@ -41,6 +41,7 @@
         <button type="button" role="tab" id="tab-report" aria-controls="view-report" aria-selected="true" tabindex="0">דוח מכירות</button>
         <button type="button" role="tab" id="tab-sim" aria-controls="view-sim" aria-selected="false" tabindex="-1">סימולטור מכירה</button>
         <button type="button" role="tab" id="tab-formulas" aria-controls="view-formulas" aria-selected="false" tabindex="-1">נוסחאות</button>
+        <button type="button" role="tab" id="tab-explain" aria-controls="view-explain" aria-selected="false" tabindex="-1">הסבר</button>
       </div>
     </header>
 
@@ -151,10 +152,7 @@
     <section class="card" id="summary-card" aria-labelledby="sum-title">
       <h2 id="sum-title"><span class="step">3</span> סיכום וקיזוז הפסדים</h2>
       <div id="summary" class="summary"></div>
-      <details class="explain-all" id="explain-all">
-        <summary>איך מחושב המס? הסבר כללי עם נוסחאות</summary>
-        <div id="explain-body" class="explain-body"></div>
-      </details>
+      <div class="actions"><button type="button" class="btn btn-quiet" id="go-explain">איך מחושב המס? מעבר להסבר המלא</button></div>
     </section>
 
     <!-- Chart -->
@@ -353,6 +351,16 @@
       </section>
     </div>
 
+    <!-- Explanation: the general method, formulas in LaTeX (KaTeX) -->
+    <div id="view-explain" role="tabpanel" aria-labelledby="tab-explain" hidden>
+      <section class="card explain-page" aria-labelledby="ex-title">
+        <h2 id="ex-title">איך מחושב המס על מכירת ESPP ו‑RSU</h2>
+        <p class="lead">ההסבר הכללי, עם כל הנוסחאות. כדי לראות אותן עם המספרים של מכירה מסוימת, פותחים את לשונית "נוסחאות", או לוחצים "כל השלבים עם הנוסחאות" ליד עסקה בדוח.</p>
+        <div id="ex-body"></div>
+        <p class="hint">החישוב מבוסס על חוזר מס הכנסה 10/2025 ועל סעיף 102 לפקודה. במסלול 102 אין הכרעה רשמית בין חישוב ריאלי לנומינלי של חלק רווח ההון, והכלי מחשב ריאלית. הכלי אינו ייעוץ מס.</p>
+      </section>
+    </div>
+
     <footer class="foot">
       <p><button id="install-app" class="btn btn-sm" type="button" hidden>התקנה כאפליקציה</button></p>
       <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
@@ -431,6 +439,14 @@
             <label for="f-costUsd" id="l-costUsd">עלות ($) <span class="req" aria-hidden="true">*</span> <small>Adjusted Cost Basis</small></label>
             <input id="f-costUsd" name="costUsd" type="number" inputmode="decimal" step="0.01" min="0" required aria-describedby="e-costUsd">
             <p class="field-error" id="e-costUsd"></p>
+          </div>
+          <div class="field" id="w-offerStart">
+            <label for="f-offerStart">תחילת תקופת ההצעה <bdi>(Grant Date)</bdi> <small>(לא חובה) · ל‑Lookback</small></label>
+            <input id="f-offerStart" name="offerStart" type="date">
+          </div>
+          <div class="field" id="w-discountPct">
+            <label for="f-discountPct">הנחת ESPP (%) <small>(לא חובה) · בדרך כלל 15</small></label>
+            <input id="f-discountPct" name="discountPct" type="number" inputmode="decimal" step="0.5" min="0" max="50" placeholder="15">
           </div>
           <div class="field" id="w-paidUsd">
             <label for="f-paidUsd">סכום ששילמת ($) <small>(לא חובה) · Acquisition Cost, מחיר הרכישה המוזל × כמות</small></label>
@@ -603,5 +619,7 @@
   <script src="src/js/app.js"></script>
   <script src="src/js/sim.js"></script>
   <script src="src/js/formulas.js"></script>
+  <script src="src/js/whatif.js"></script>
+  <script src="src/js/explain.js"></script>
 </body>
 </html>

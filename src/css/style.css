@@ -412,6 +412,57 @@ input:disabled { opacity: .6; }
 .doc-text { white-space: pre-wrap; font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 8px 12px; max-height: 240px; overflow: auto; }
 #doc-warn:empty { display: none; }
 
+/* ------------------------------------------------------------------ compact calculation panel */
+.calc-table th[scope="row"] { font-weight: 400; color: var(--text-2); }
+.calc-table td.num { direction: ltr; text-align: left; font-variant-numeric: tabular-nums; }
+.calc-table tr.hl th, .calc-table tr.hl td { background: var(--accent-soft); }
+.calc-results { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; margin: 12px 0; font-size: 14px; max-width: 560px; }
+.calc-results dt { color: var(--text-2); }
+.calc-results dd { margin: 0; direction: ltr; text-align: left; font-variant-numeric: tabular-nums; }
+.calc-results dd.big { font-size: 16px; font-weight: 600; }
+.panel-links { display: flex; flex-wrap: wrap; gap: 0 16px; margin-bottom: 8px; }
+
+/* ------------------------------------------------------------------ "what if" chart */
+:root { --offer: #7c4dce; }
+:root[data-theme="dark"] { --offer: #a98be8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --offer: #a98be8; } }
+.wi-chart { width: 100%; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.wi-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.wi-chart .gl { stroke: var(--grid); stroke-width: 1; }
+.wi-chart .axis { fill: var(--muted); font-size: 12px; }
+.wi-line { fill: none; stroke: var(--series-1); stroke-width: 1.5; }
+.wi-range { stroke: var(--sell); stroke-width: 4; stroke-linecap: round; opacity: .45; }
+.wi-ghost { fill: none; stroke-width: 2; stroke-dasharray: 3 2; }
+.wi-ghost.wi-offer { stroke: var(--offer); } .wi-ghost.wi-buy { stroke: var(--buy); } .wi-ghost.wi-sale { stroke: var(--sell); }
+.wi-handle { cursor: grab; outline: none; }
+.wi-chart.dragging .wi-handle { cursor: grabbing; }
+.wi-handle .hit { fill: transparent; }
+.wi-handle .dot { stroke: var(--surface); stroke-width: 2; }
+.wi-handle.wi-offer .dot { fill: var(--offer); } .wi-handle.wi-buy .dot { fill: var(--buy); } .wi-handle.wi-sale .dot { fill: var(--sell); }
+.wi-handle text { font-size: 12px; fill: var(--text-2); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.wi-handle:focus-visible .dot { stroke: var(--accent); stroke-width: 3; }
+.wi-handle:focus-visible .hit { stroke: var(--accent); stroke-width: 2; }
+.wi-dates { margin-top: 8px; }
+.sw.wi-offer { background: var(--offer); } .sw.wi-buy { background: var(--buy); } .sw.wi-sale { background: var(--sell); }
+.wi-dates .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+.wi-table td.num { direction: ltr; text-align: left; font-variant-numeric: tabular-nums; }
+.wi-table tr.total th, .wi-table tr.total td { font-weight: 600; border-top: 1px solid var(--border); }
+.wi-table tr.diff td, .wi-table tr.diff th { font-weight: 600; }
+.wi-table { max-width: 720px; }
+
+/* ------------------------------------------------------------------ explanation page */
+.explain-page { font-size: 16px; }
+.explain-page .lead { margin-bottom: 8px; }
+.ex-sec { border-top: 1px solid var(--grid); padding-top: 8px; margin-top: 16px; max-width: 80ch; }
+.ex-sec h3 { font-size: 20px; margin: 8px 0; }
+.ex-sec p { margin: 8px 0; line-height: 1.7; }
+.ex-math { overflow-x: auto; overflow-y: hidden; padding: 4px 0; text-align: left; }
+.ex-math .katex-display { margin: 8px 0; text-align: left; }
+.ex-math .katex { font-size: 1.25em; }
+.ex-symbols { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; align-items: baseline; }
+.ex-symbols dt { text-align: left; min-width: 40px; }
+.ex-symbols dd { margin: 0; }
+
 /* ------------------------------------------------------------------ narrow (max-width: 767.98px) */
 @media (max-width: 767.98px) {
   .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }

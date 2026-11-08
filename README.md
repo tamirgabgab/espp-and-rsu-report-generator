@@ -26,6 +26,10 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
 - **Sale simulator:** enter the shares you still hold and see the tax and the
   net amount of a sale today, and how much waiting for the end of the 24-month
   trustee period would save.
+- **Explanation tab** with every formula typeset in LaTeX, and a compact
+  per-lot panel with a **"what if" stock chart**: drag the purchase, the ESPP
+  lookback start or the sale date and compare the gain, the taxes and the net
+  amount with what really happened.
 - **Formulas tab:** a live calculator that shows every formula (marginal tax
   and capital-gains tax, with the conversion to shekels) for ESPP / RSU, with
   or without a trustee, then substitutes your numbers.
@@ -70,7 +74,7 @@ The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 | Path | Contents |
 |---|---|
 | `index.html` | The app's single page. It stays at the root because GitHub Pages serves from there. |
-| `src/js/` | App code: `core.js` (calculation logic), `pdf1399.js` (PDF form filling), `chart.js`, `app.js` (UI), `sim.js` (sale simulator), `formulas.js` (formulas calculator) |
+| `src/js/` | App code: `core.js` (calculation logic), `pdf1399.js` (PDF form filling), `chart.js`, `app.js` (UI), `sim.js` (sale simulator), `formulas.js` (formulas calculator), `whatif.js` (what-if stock chart), `explain.js` (LaTeX explanation), `docimport.js` (PDF / image reading) |
 | `src/css/` | Styles (light and dark) |
 | `assets/forms/` | Official blank form 1399 (י), 2025 edition |
 | `assets/fonts/` | Hebrew font embedded in the PDF, with its license |

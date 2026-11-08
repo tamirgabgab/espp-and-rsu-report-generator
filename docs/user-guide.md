@@ -64,15 +64,25 @@ one has a status badge:
 - **⚠ שער:** ECB or Yahoo deviates unusually from the Bank of Israel rate
   (above 1% / 1.5%). Check the rate on the Bank of Israel website.
 
-**"הצגת החישוב"** (show the calculation) opens a panel with:
-- every step of the calculation. Each step shows the general formula and your
-  numbers substituted into it, with the rate date used;
-- which case of Circular 10/2025 applies (for example "gain, shekel
-  strengthened");
-- a rate cross-check table: Bank of Israel, ECB and Yahoo for the purchase and
-  sale dates;
-- the market rate at the sale minute, if you entered a sale time. This is
-  information only and never goes on the form.
+**"הצגת החישוב"** (show the calculation) opens a compact panel with:
+- one table: each amount in dollars, the rate, and the amount in shekels
+  (for section 102 also the benefit value, what you paid and the work income);
+- the results: nominal gain, gain in dollars at the sale rate, real gain,
+  capital-gains tax and, for 102, the estimated marginal tax;
+- links to "כל השלבים עם הנוסחאות" (every step in the formulas tab, filled with
+  this lot) and to the explanation tab;
+- **a "what if" stock chart.** The stock's daily closes with the start of the
+  ESPP offering period (lookback), the purchase or vest date, and the sale
+  date. Drag a point, move it with the arrow keys (one trading day) or
+  PageUp/PageDown (a month), or pick a date. A table compares the actual result
+  with the "what if" one: a moved sale is priced at that day's low and high,
+  and a moved purchase is re-priced from closing prices (FMV, and the purchase
+  price with the 85% lookback). "חזרה לנתונים האמיתיים" puts the points back;
+- the rate cross-check and the market rate at the sale minute.
+
+The panel also says which case of Circular 10/2025 applies (for example
+"gain, shekel strengthened"). The market rate at the sale minute is
+information only and never goes on the form.
 
 The **pencil** opens the edit drawer. Required fields are marked with *, and
 optional ones say (לא חובה):
@@ -255,6 +265,22 @@ The **"נוסחאות"** (formulas) tab is a live calculator for one sale:
   side by side.
 
 Open it directly with the `#formulas` link.
+
+## 12. Explanation
+
+The **"הסבר"** (explanation) tab sets out the whole method in larger type,
+with every formula typeset in LaTeX (KaTeX):
+- the symbols;
+- the conversion to shekels;
+- the inflationary amount and the real gain;
+- capital-gains tax and loss offset;
+- the ESPP lookback price;
+- the RSU benefit value;
+- the section 102 split and the 24-month rule;
+- the no-trustee track;
+- the net amount.
+
+The summary in the report links to it ("איך מחושב המס?").
 
 ## FAQ
 

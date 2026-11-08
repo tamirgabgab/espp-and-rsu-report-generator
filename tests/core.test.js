@@ -350,3 +350,35 @@ test('OCR helpers: ticker snapping and best of several readings', () => {
   assert.equal(best.text, OCR_GL);
   assert.equal(Core.parseGainsText(bad).warnings.length, 1); // purchase price far below the FMV
 });
+
+// ------------------------------------------------------------ what if / lookback
+
+const P = { X: { rates: { '2023-07-31': 100, '2024-01-31': 120, '2024-02-01': 90, '2026-05-11': 200, '2026-05-12': 210 },
+  high: { '2026-05-11': 220, '2026-05-12': 215 }, low: { '2026-05-11': 190, '2026-05-12': 205 } } };
+const R2 = { '2023-07-31': 3.7, '2024-01-31': 3.635, '2024-02-01': 3.62, '2026-05-11': 2.909, '2026-05-12': 2.91 };
+const wlot = { symbol: 'X', planType: 'ESPP', qty: 10, dateAcquired: '2024-01-31', dateSold: '2026-05-11', offerStart: '2023-07-31', proceedsUsd: 2000, costUsd: 1200, paidUsd: 850, feesUsd: 0 };
+
+test('lookback purchase price and offering start', () => {
+  assert.equal(Core.lookbackPrice(100, 120), 85);
+  assert.equal(Core.lookbackPrice(130, 120, 10), 108);
+  assert.equal(Core.offeringStart({ dateAcquired: '2024-01-31' }), '2023-07-31');
+  assert.equal(Core.offeringStart(wlot), '2023-07-31');
+});
+
+test('what if: unmoved dates give no variants; a moved sale gives the low and high of the day', () => {
+  assert.equal(Core.whatIfLots(wlot, { offerStart: '2023-07-31', buyDate: '2024-01-31', saleDate: '2026-05-11' }, P).variants.length, 0);
+  const s = Core.whatIfLots(wlot, { offerStart: '2023-07-31', buyDate: '2024-01-31', saleDate: '2026-05-12' }, P);
+  assert.deepEqual(s.variants.map(v => [v.key, v.lot.proceedsUsd, v.lot.costUsd]), [['low', 2050, 1200], ['high', 2150, 1200]]);
+});
+
+test('what if: moving the purchase re-prices FMV and the lookback price', () => {
+  const s = Core.whatIfLots(wlot, { offerStart: '2023-07-31', buyDate: '2024-02-01', saleDate: '2026-05-11' }, P);
+  const v = s.variants[0].lot;
+  assert.equal(v.costUsd, 900); // close 90 x 10
+  assert.equal(v.paidUsd, 765); // 85% x min(100, 90) x 10
+  const e = Core.evaluateLot(v, { rates: R2, prices: P, is102: true, settings: { marginalRate: 50, includeNi: false } });
+  assert.equal(e.ok, true);
+  assert.equal(e.calc.workUsd, 135); // discount 900 - 765
+  assert.equal(e.workTax, Core.roundILS(Core.roundILS(135 * 2.909) * 0.5));
+  assert.equal(e.net, e.calc.proceedsIls - e.paidIls - e.workTax - e.calc.tax);
+});

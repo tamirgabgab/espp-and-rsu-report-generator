@@ -14,7 +14,8 @@
   script): Yahoo Finance daily closes in USD, split-adjusted, since 2018, for
   the tickers in `data/stocks/tickers.json` (currently `["QCOM"]`). They are
   written to `data/stocks/<TICKER>.json` (same format as the daily rate files)
-  and bundled for the browser in `data/stocks/prices.js`
+  and bundled for the browser in `data/stocks/prices.js`. Each file also has
+  `high` and `low` maps (the day's range, used by the "what if" chart)
   (`window.STOCK_PRICES`). They are used for the 30-trading-day average before
   an RSU grant (section 102) and for the current price in the simulator. To
   add a ticker, add it to `tickers.json` and run

@@ -109,23 +109,45 @@ def fetch_yahoo_daily(start: str) -> dict:
     return {dt.datetime.fromtimestamp(t, dt.timezone.utc).date().isoformat(): c for t, c in bars}
 
 
+def yahoo_ohlc(symbol: str, p1: int, p2: int) -> dict:
+    """Daily close, high and low (USD) keyed by ISO date."""
+    data = json.loads(http_get(YAHOO_API.format(symbol=symbol, interval="1d", p1=p1, p2=p2)))["chart"]
+    if data.get("error"):
+        raise RuntimeError(f"Yahoo {symbol}: {data['error'].get('description')}")
+    res = data["result"][0]
+    q = res["indicators"]["quote"][0]
+    out = {"close": {}, "high": {}, "low": {}}
+    for i, t in enumerate(res.get("timestamp") or []):
+        c, h, lo = q["close"][i], q["high"][i], q["low"][i]
+        if c is None:
+            continue
+        # Daily bars are stamped at the US market open (UTC), so the UTC date is the trading day.
+        d = dt.datetime.fromtimestamp(t, dt.timezone.utc).date().isoformat()
+        out["close"][d] = round(c, 4)
+        if h is not None and lo is not None:
+            out["high"][d], out["low"][d] = round(h, 4), round(lo, 4)
+    return out
+
+
 def fetch_stocks() -> str:
     """Daily closes (USD) of the employer tickers in data/stocks/tickers.json.
 
-    Used for the 30-trading-day average before an RSU grant (section 102) and
-    for the current price in the sale simulator. Yahoo's "close" is adjusted
-    for splits but not for dividends.
+    Used for the 30-trading-day average before an RSU grant (section 102), the
+    current price in the sale simulator, and the "what if" stock chart (the
+    day's high/low range). Yahoo's prices are adjusted for splits but not for
+    dividends.
     """
     tickers = json.loads((STOCKS / "tickers.json").read_text(encoding="utf-8"))
     p1 = calendar.timegm(dt.date.fromisoformat(STOCKS_START).timetuple())
     bundle, done = {}, []
     for sym in tickers:
-        # Daily bars are stamped at the US market open (UTC), so the UTC date is the trading day.
-        bars = yahoo_chart("1d", p1, int(time.time()), symbol=sym)
-        closes = {dt.datetime.fromtimestamp(t, dt.timezone.utc).date().isoformat(): round(c, 4) for t, c in bars}
+        ohlc = yahoo_ohlc(sym, p1, int(time.time()))
+        closes = ohlc["close"]
         if len(closes) < 100:
             raise RuntimeError(f"{sym}: only {len(closes)} closes")
-        p = daily_payload(f"Yahoo Finance {sym} daily close (USD, split-adjusted)", sym, closes)
+        p = daily_payload(f"Yahoo Finance {sym} daily close, high and low (USD, split-adjusted)", sym, closes)
+        p["high"] = dict(sorted(ohlc["high"].items()))
+        p["low"] = dict(sorted(ohlc["low"].items()))
         write_json(STOCKS / f"{sym}.json", p)
         bundle[sym] = p
         done.append(f"{sym} {p['count']} closes {p['first']}..{p['last']}")

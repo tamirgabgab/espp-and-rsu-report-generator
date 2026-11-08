@@ -252,14 +252,7 @@
       const lots = App.reportLots().filter(l => l.planType === 'ESPP' || l.planType === 'RSU');
       const l = lots[+e.target.value];
       if (!l) return;
-      const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 10000) / 10000) : '');
-      st = {
-        ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
-        grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
-        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
-      };
-      persist();
-      render();
+      fillFromLot(l);
       App.toast('הנתונים מולאו מהעסקה');
     });
     $('#fx-reset').addEventListener('click', () => { st = { ...EXAMPLE }; persist(); render(); App.toast('המחשבון אופס לדוגמה'); });
@@ -268,6 +261,18 @@
     render();
   }
 
-  window.Formulas = { render };
+  /** Copy a report lot into the calculator. */
+  function fillFromLot(l) {
+      const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 10000) / 10000) : '');
+      st = {
+        ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
+        grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
+        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
+      };
+      persist();
+      render();
+  }
+
+  window.Formulas = { render, fillFromLot: l => { fillFromLot(l); } };
   document.addEventListener('DOMContentLoaded', init);
 })();

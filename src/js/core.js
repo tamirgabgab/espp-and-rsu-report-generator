@@ -483,7 +483,7 @@
   // ---------------------------------------------------------------- backup / restore
 
   const BACKUP_APP = 'espp-rsu-1399';
-  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls'];
+  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'offerStart', 'discountPct'];
   const HOLDING_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'grantDate', 'costPerShare', 'paidPerShare', 'avg30', 'sec102'];
   const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate', 'marginalRate', 'niRate', 'includeNi']; // never the ID number
 
@@ -496,8 +496,8 @@
     lot.feesUsd = isFinite(numOrNaN(lot.feesUsd)) ? numOrNaN(lot.feesUsd) : 0;
     lot.sec102 = lot.sec102 === true || lot.sec102 === false ? lot.sec102 : null;
     lot.symbol = String(lot.symbol || '').toUpperCase();
-    for (const k of ['dateAcquired', 'dateSold', 'grantDate']) lot[k] = parseDate(lot[k]) || '';
-    for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order', 'avg30']) lot[k] = lot[k] === null ? '' : String(lot[k]);
+    for (const k of ['dateAcquired', 'dateSold', 'grantDate', 'offerStart']) lot[k] = parseDate(lot[k]) || '';
+    for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order', 'avg30', 'discountPct']) lot[k] = lot[k] === null ? '' : String(lot[k]);
     for (const k of ['paidUsd', 'withheldIls']) lot[k] = numOrNaN(lot[k]);
     return lot;
   }
@@ -645,6 +645,7 @@
         planType,
         qty,
         grantDate: planType === 'RSU' ? parseDate(get('grantDate')) || '' : '',
+        offerStart: planType === 'ESPP' ? parseDate(get('grantDate')) || '' : '', // E*Trade's ESPP "Grant Date" = offering start
         paidUsd,
         dateAcquired: parseDate(get('dateAcquired')),
         dateSold,
@@ -716,6 +717,101 @@
     }));
     if (!holdings.length) warnings.push('לא נמצאו שורות עם כמות מניות');
     return { holdings, warnings };
+  }
+
+  // ---------------------------------------------------------------- "what if" (stock chart)
+
+  const ESPP_DISCOUNT = 15;
+  const DEFAULT_OFFERING_MONTHS = 6;
+
+  /** Start of the ESPP offering period: the lot's value, or 6 months before the purchase. */
+  const offeringStart = lot => lot.offerStart || (lot.dateAcquired ? addMonths(lot.dateAcquired, -DEFAULT_OFFERING_MONTHS) : '');
+
+  /** ESPP purchase price with a lookback: (1 − discount) × min(close at offering start, close at purchase). */
+  function lookbackPrice(closeStart, closePurchase, discountPct = ESPP_DISCOUNT) {
+    if (!isFinite(closeStart) || !isFinite(closePurchase)) return NaN;
+    return round2((1 - discountPct / 100) * Math.min(closeStart, closePurchase));
+  }
+
+  /** Price of a trading day: close, high or low (the last trading day on or before the date). */
+  function priceOn(prices, iso, kind = 'close') {
+    if (!prices || !iso) return null;
+    const map = kind === 'close' ? prices.rates : prices[kind];
+    const r = lookupRate(map || {}, iso);
+    return r ? { price: r.rate, date: r.date } : null;
+  }
+
+  /**
+   * Evaluate one lot (the actual one or a "what if" variant): the capital part,
+   * the work income, the estimated taxes and the net amount, in shekels.
+   * For the regular track the payroll tax on the benefit is estimated too, so
+   * both tracks compare like for like. A sale date after the bundled BOI rates
+   * uses the last published rate.
+   */
+  function evaluateLot(lot, { rates, prices, is102, settings }) {
+    const overrides = { rateBuy: lot.rateBuy, rateSell: lot.rateSell };
+    const last = lastDate(rates || {});
+    if (!overrides.rateSell && lot.dateSold && last && lot.dateSold > last) overrides.rateSell = rates[last];
+    const calc = is102 ? computeLot102(lot, rates, overrides, { prices }) : computeLot(lot, rates, overrides);
+    if (!calc.ok) return { ok: false, issues: calc.issues };
+    const rb = calc.buy ? calc.buy.rate : (lookupRate(rates, allocationDate(lot)) || {}).rate;
+    const paid = isFinite(lot.paidUsd) ? lot.paidUsd : lot.planType === 'RSU' ? 0 : NaN;
+    const paidIls = isFinite(paid) && isFinite(rb) ? roundILS(paid * rb) : 0;
+    let workIls = 0, workTaxIls = 0, payroll = false;
+    if (is102) { workIls = calc.workIls; workTaxIls = workTax(workIls, settings); }
+    else if (isFinite(lot.costUsd) && calc.buy) {
+      workIls = roundILS((lot.costUsd - (isFinite(paid) ? paid : lot.costUsd)) * calc.buy.rate);
+      workTaxIls = workTax(workIls, settings);
+      payroll = true;
+    }
+    const net = calc.proceedsIls - paidIls - calc.feesIls - workTaxIls - calc.tax;
+    return {
+      ok: true, calc, paidIls, workIls, workTax: workTaxIls, payroll, net,
+      paidPerShare: lot.qty > 0 && isFinite(paid) ? round2(paid / lot.qty) : NaN,
+      fmvPerShare: lot.qty > 0 && isFinite(lot.costUsd) ? round2(lot.costUsd / lot.qty) : NaN,
+      salePerShare: lot.qty > 0 ? round2((lot.proceedsUsd + (lot.feesUsd || 0)) / lot.qty) : NaN,
+    };
+  }
+
+  /**
+   * Build the "what if" variants of a lot for moved dates.
+   * A moved purchase or offering start re-prices the purchase from closing
+   * prices (FMV = close at purchase; ESPP price with lookback). A moved sale is
+   * priced at that day's low and high. Unmoved parts keep the actual numbers.
+   * @param {object} sc {offerStart, buyDate, saleDate}
+   * @returns {{moved:{offer,buy,sale}, variants: {key,label,lot}[]}}
+   */
+  function whatIfLots(lot, sc, prices) {
+    const p = prices && prices[lot.symbol];
+    const q = lot.qty;
+    const moved = { offer: lot.planType === 'ESPP' && sc.offerStart !== offeringStart(lot), buy: sc.buyDate !== lot.dateAcquired, sale: sc.saleDate !== lot.dateSold };
+    const base = { ...lot, dateAcquired: sc.buyDate, dateSold: sc.saleDate };
+    if ((moved.buy || moved.offer) && p) {
+      // Scale the actual numbers by the change in market prices, so an unmoved
+      // date gives back exactly the real figures whatever the plan's FMV rule is.
+      const close = iso => { const r = priceOn(p, iso); return r ? r.price : NaN; };
+      const s1a = close(lot.dateAcquired), s1 = close(sc.buyDate);
+      if (isFinite(s1)) {
+        base.costUsd = round2(isFinite(lot.costUsd) && isFinite(s1a) ? lot.costUsd * (s1 / s1a) : s1 * q);
+        if (lot.planType === 'ESPP') {
+          const d = isFinite(+lot.discountPct) && lot.discountPct !== '' ? +lot.discountPct : ESPP_DISCOUNT;
+          const la = lookbackPrice(close(offeringStart(lot)), s1a, d);
+          const ln = lookbackPrice(close(sc.offerStart), s1, d);
+          if (isFinite(ln)) base.paidUsd = round2(isFinite(lot.paidUsd) && isFinite(la) ? lot.paidUsd * (ln / la) : ln * q);
+        }
+      }
+    }
+    const variants = [];
+    if (moved.sale && p) {
+      const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
+      for (const [key, label] of [['low', 'מחיר נמוך'], ['high', 'מחיר גבוה']]) {
+        const px = priceOn(p, sc.saleDate, key);
+        if (px) variants.push({ key, label, price: px.price, lot: { ...base, proceedsUsd: round2(px.price * q - fees) } });
+      }
+    } else if (moved.buy || moved.offer) {
+      variants.push({ key: 'what', label: 'מה אם', lot: base });
+    }
+    return { moved, variants };
   }
 
   // ---------------------------------------------------------------- text from PDF / OCR
@@ -831,6 +927,7 @@
         proceedsUsd: moneyAfter.length ? moneyAfter[0].v : NaN, costUsd: cost, feesUsd: 0,
         paidUsd: planType === 'ESPP' && isFinite(details.purchasePrice) && isFinite(qty) ? round2(details.purchasePrice * qty) : planType === 'RSU' ? 0 : NaN,
         grantDate: planType === 'RSU' ? details.grantDate || '' : '',
+        offerStart: planType === 'ESPP' ? details.grantDate || '' : '',
         order: (lines.slice(i, end).join(' ').match(/Order\W{0,3}\s*(\d{6,})/i) || [])[1] || '',
         timeSold: '',
       };
@@ -968,5 +1065,6 @@
     makeBackup, parseBackup, mergeLots, lotKey, cleanHolding,
     avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
     parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, snapSymbol,
+    ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots,
   };
 });
