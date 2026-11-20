@@ -54,7 +54,7 @@
     const d = derive();
     for (const b of document.querySelectorAll('#fx-plan [data-plan]')) { const on = b.dataset.plan === st.plan; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; }
     for (const b of document.querySelectorAll('#fx-track [data-track]')) { const on = b.dataset.track === st.track; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; }
-    const show = { RSU: st.plan === 'RSU', ESPP: st.plan === 'ESPP', FMV: st.plan === 'ESPP' || !d.is102, AVG: st.plan === 'RSU' && d.is102 };
+    const show = { RSU: st.plan === 'RSU', ESPP: st.plan === 'ESPP', FMV: st.plan === 'ESPP' || !d.is102, AVG: d.is102 };
     for (const el of document.querySelectorAll('#fx-inputs [data-show]')) el.hidden = !show[el.dataset.show];
     for (const el of document.querySelectorAll('#fx-inputs [data-fx]')) if (document.activeElement !== el) el.value = st[el.dataset.fx] ?? '';
     $('#fx-buy-label').innerHTML = st.plan === 'RSU' ? 'תאריך הבשלה <bdi>(Vest)</bdi>' : 'תאריך רכישה';
@@ -62,8 +62,11 @@
     $('#fx-rb-label').innerHTML = `${d.is102 ? 'שער ביום ההקצאה' : st.plan === 'RSU' ? 'שער ביום ההבשלה' : 'שער ביום הרכישה'} <bdi>(R<sub>b</sub>)</bdi>`;
     $('#fx-fmv').placeholder = d.fmvAuto ? `אוטומטי: ${d.fmvAuto.rate}` : '';
     $('#fx-fmv-note').textContent = d.fmvAuto ? `מחיר הסגירה ב‑${D(d.fmvAuto.date)}. משאירים ריק כדי להשתמש בו.` : d.prices ? '' : 'אין מחירים לסימול הזה, צריך להקליד.';
-    $('#fx-avg').placeholder = d.avgAuto ? `אוטומטי: ${d.avgAuto.avg}` : '';
-    $('#fx-avg-note').textContent = d.avgAuto ? `מ‑${D(d.avgAuto.from)} עד ${D(d.avgAuto.to)}. משאירים ריק כדי להשתמש בו.` : 'מזינים תאריך הענקה, או מקלידים את הממוצע מדוח הנאמן.';
+    const esppAvg = st.plan === 'ESPP';
+    $('#fx-avg-label').textContent = esppAvg ? 'שווי ההטבה למניה ($, לא חובה)' : 'ממוצע 30 ימי מסחר לפני ההענקה ($ למניה)';
+    $('#fx-avg').placeholder = esppAvg ? '' : d.avgAuto ? `אוטומטי: ${d.avgAuto.avg}` : '';
+    $('#fx-avg-note').textContent = esppAvg ? 'הנמוך מבין מחיר השוק בתחילת תקופת ההצעה וביום הרכישה, או השווי מדוח הנאמן. ריק = מחיר יום הרכישה.'
+      : d.avgAuto ? `מ‑${D(d.avgAuto.from)} עד ${D(d.avgAuto.to)}. משאירים ריק כדי להשתמש בו.` : 'מזינים תאריך הענקה, או מקלידים את הממוצע מדוח הנאמן.';
     const last = Core.lastClose(d.prices);
     $('#fx-price-note').textContent = last ? `סגירה אחרונה של ${st.symbol}: ${last.price} ב‑${D(last.date)}.` : '';
     $('#fx-rb').placeholder = d.rbAuto ? `יציג: ${d.rbAuto.rate}` : '';
@@ -93,17 +96,20 @@
     if (!isFinite(d.rs)) issues.push('חסר שער ליום המכירה');
     if (issues.length) return { ok: false, issues };
 
-    const P = Core.round2(price * d.qty), F = fees, V = Core.round2(perShare * d.qty), Cp = Core.round2(paidPs * d.qty);
+    // ESPP under 102: an optional benefit value per share (the lookback rule, or the trustee's figure).
+    const esppValue = st.plan === 'ESPP' && d.is102 && isFinite(n(st.avg30)) && n(st.avg30) > 0 ? n(st.avg30) : NaN;
+    const P = Core.round2(price * d.qty), F = fees, V = Core.round2((isFinite(esppValue) ? esppValue : perShare) * d.qty), Cp = Core.round2(paidPs * d.qty);
     // The same evaluation as the report and the "what if" table (Core.evaluateLot).
     const lot = {
       symbol: st.symbol, planType: st.plan, qty: d.qty, dateAcquired: st.buyDate, grantDate: st.grantDate, dateSold: st.saleDate,
-      proceedsUsd: P, costUsd: V, paidUsd: Cp, feesUsd: F, avg30: d.is102 && st.plan === 'RSU' ? String(d.avg) : '',
+      proceedsUsd: P, costUsd: Core.round2(perShare * d.qty), paidUsd: Cp, feesUsd: F,
+      avg30: d.is102 && st.plan === 'RSU' ? String(d.avg) : isFinite(esppValue) ? String(esppValue) : '',
       rateBuy: isFinite(d.rb) ? d.rb : '', rateSell: d.rs,
     };
     const ev = Core.evaluateLot(lot, { rates: App.RATES, prices: App.PRICES, is102: d.is102, settings: App.profile });
     if (!ev.ok) return { ok: false, issues: ev.issues };
     const calc = ev.calc;
-    const payroll = ev.payroll ? { w0: Core.round2(V - Cp), w0Ils: ev.workIls, tax: ev.workTax } : null;
+    const payroll = ev.payroll ? { w0: Core.round2(lot.costUsd - Cp), w0Ils: ev.workIls, tax: ev.workTax } : null;
     const rbUsed = calc.buy ? calc.buy.rate : d.rb;
     return { ok: true, P, F, V, Cp, calc, workIls: d.is102 ? ev.workIls : 0, workTax: d.is102 ? ev.workTax : 0, payroll, rbUsed, paidIls: ev.paidIls, cash: ev.cash, net: ev.net };
   }
@@ -143,7 +149,8 @@
     const paramsRows = [
       ['P', 'תמורה', `${money(r.P)} $`, `${num(d.qty)} × ${n(st.price)}`],
       ['F', 'עמלות', `${money(r.F)} $`, ''],
-      ['V', st.plan === 'RSU' && d.is102 ? 'שווי ההטבה: ממוצע 30 הימים × כמות' : st.plan === 'RSU' ? 'שווי ביום ההבשלה × כמות' : 'מחיר שוק ביום הרכישה × כמות', `${money(r.V)} $`, ''],
+      ['V', st.plan === 'RSU' && d.is102 ? 'שווי ההטבה: ממוצע 30 הימים × כמות' : st.plan === 'RSU' ? 'שווי ביום ההבשלה × כמות'
+        : d.is102 && isFinite(n(st.avg30)) && n(st.avg30) > 0 ? 'שווי ההטבה למניה × כמות' : 'מחיר שוק ביום הרכישה × כמות', `${money(r.V)} $`, ''],
       ['Cp', 'מה ששילמת', `${money(r.Cp)} $`, st.plan === 'RSU' ? 'ב‑RSU לא משלמים' : ''],
       ['Rb', d.is102 ? 'שער ביום ההקצאה' : 'שער ביום הרכישה או ההבשלה', isFinite(r.rbUsed) ? String(r.rbUsed) : '—', d.rbDate ? D(d.rbDate) : ''],
       ['Rs', 'שער ביום המכירה', String(rs), D(st.saleDate)],
@@ -154,7 +161,7 @@
       html += `<h3>שלב 1: הכנסת עבודה, במס שולי (הנאמן מנכה במכירה)</h3><ol class="steps">
         ${c.early
           ? step('הכנסת עבודה: כל הרווח', 'W = P − F − Cp', `${money(r.P)} − ${money(r.F)} − ${money(r.Cp)} = ${money(c.workUsd)} $`, `המכירה לפני ${D(c.unlock)}, תום 24 החודשים מההקצאה (${D(c.alloc)}). לכן כל הרווח הוא הכנסת עבודה.`)
-          : step('הכנסת עבודה', 'W = min(V, P − F) − Cp', `min(${money(r.V)}, ${money(r.P - r.F)}) − ${money(r.Cp)} = ${money(c.workUsd)} $`, st.plan === 'RSU' ? 'ב‑RSU: ממוצע 30 ימי המסחר שלפני ההענקה.' : 'ב‑ESPP: ההנחה, כלומר מחיר השוק ביום הרכישה פחות מה ששילמת.')}
+          : step('הכנסת עבודה', 'W = min(V, P − F) − Cp', `min(${money(r.V)}, ${money(r.P - r.F)}) − ${money(r.Cp)} = ${money(c.workUsd)} $`, st.plan === 'RSU' ? 'ב‑RSU: ממוצע 30 ימי המסחר שלפני ההענקה.' : 'ב‑ESPP: ההנחה, כלומר הנמוך מבין מחיר השוק בתחילת ההצעה וביום הרכישה, פחות מה ששילמת.')}
         ${step('בשקלים', 'W₪ = W × Rs', `${money(c.workUsd)} × ${rs} = ${num(r.workIls)} ₪`, 'בשער של יום המכירה, כמו בניכוי של הנאמן.')}
         ${step('מס שולי משוער', `W₪ × ${rate()}%`, `${num(r.workIls)} × ${rate()}% = ${num(r.workTax)} ₪`, `${+App.profile.marginalRate || 0}% מס שולי${App.profile.includeNi ? ` ועוד ${+App.profile.niRate || 0}% ביטוח לאומי ובריאות` : ''}. הערכה בלבד.`, 'result')}
       </ol>`;
@@ -200,7 +207,7 @@
       <p>הסימנים: ${L('P')} תמורה, ${L('F')} עמלות, ${L('V')} שווי ההטבה, ${L('Cp')} מה ששילמת (בדולרים), ${L('Rb')} ו‑${L('Rs')} השער היציג ביום הרכישה, ההבשלה או ההקצאה, וביום המכירה. ${L('m')} הוא שיעור המס השולי, כולל ביטוח לאומי ובריאות אם רלוונטי.</p>
       <p>רווח ההון מחושב תמיד באותה דרך, לפי חוזר 10/2025: ${L('A = (P − C − F) × Rs')}, ${L('B = P×Rs − C×Rb − F×Rs')}, ואז רווח ריאלי = ${L('min(A, B)')} כששניהם רווח, ${L('max(A, B)')} כששניהם הפסד, ו‑0 אחרת. המס הוא 25% אחרי קיזוז הפסדים. מה שמשתנה בין המקרים הוא ההגדרה של ${L('V')}, של העלות ${L('C')} ושל התאריך של ${L('Rb')}.</p>
       <h3>‏ESPP, סעיף 102 עם נאמן</h3>
-      ${f([`שווי ההטבה: ${L('V = FMV(purchase) × qty')}`, `ששולם: ${L('Cp = purchase price × qty')}`, `הכנסת עבודה: ${L('W = min(V, P − F) − Cp')}`, `מס שולי: ${L('Tax_w = W × Rs × m')}`, `עלות לרווח ההון: ${L('C = Cp + W')}, בשער של יום הרכישה (ההקצאה)`, 'מכירה לפני 24 חודשים: כל הרווח הכנסת עבודה, ואין רווח הון'])}
+      ${f([`שווי ההטבה: ${L('V = min(FMV(offer start), FMV(purchase)) × qty')}`, `ששולם: ${L('Cp = purchase price × qty')}`, `הכנסת עבודה: ${L('W = min(V, P − F) − Cp')}`, `מס שולי: ${L('Tax_w = W × Rs × m')}`, `עלות לרווח ההון: ${L('C = Cp + W')}, בשער של יום הרכישה (ההקצאה)`, 'מכירה לפני 24 חודשים: כל הרווח הכנסת עבודה, ואין רווח הון'])}
       <h3>‏ESPP בלי נאמן</h3>
       ${f([`הטבה במשכורת, ביום הרכישה: ${L('W₀ = V − Cp')}`, `מס במשכורת: ${L('Tax₀ ≈ W₀ × Rb × m')}`, `עלות לרווח ההון: ${L('C = V')} (Adjusted Cost Basis), בשער של יום הרכישה`])}
       <h3>‏RSU, סעיף 102 עם נאמן</h3>
@@ -255,6 +262,13 @@
     render();
   }
 
+  /** ESPP under 102: the lookback benefit value of a lot, when it differs from the purchase-date price. */
+  function esppValueOf(l) {
+    if (l.planType !== 'ESPP' || !App.sec102Of(l)) return '';
+    const b = Core.esppBenefit(l, App.PRICES);
+    return b && b.source !== 'cost' ? String(b.perShare) : '';
+  }
+
   /** Copy a report lot into the calculator. */
   function fillFromLot(l) {
       // Enough decimals that per-share × quantity gives the lot's totals back to the cent.
@@ -262,7 +276,7 @@
       st = {
         ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
         grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
-        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
+        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || esppValueOf(l), rb: l.rateBuy || '', rs: l.rateSell || '',
       };
       persist();
       render();

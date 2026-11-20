@@ -323,7 +323,7 @@
           <div class="field" data-show="RSU"><label for="fx-grant">תאריך הענקה <bdi>(Grant)</bdi></label><input id="fx-grant" data-fx="grantDate" type="date"></div>
           <div class="field"><label for="fx-buy" id="fx-buy-label">תאריך רכישה</label><input id="fx-buy" data-fx="buyDate" type="date"></div>
           <div class="field" data-show="FMV"><label for="fx-fmv" id="fx-fmv-label">מחיר שוק ביום הרכישה ($ למניה)</label><input id="fx-fmv" data-fx="fmv" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-fmv-note"></p></div>
-          <div class="field" data-show="AVG"><label for="fx-avg">ממוצע 30 ימי מסחר לפני ההענקה ($ למניה)</label><input id="fx-avg" data-fx="avg30" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-avg-note"></p></div>
+          <div class="field" data-show="AVG"><label for="fx-avg" id="fx-avg-label">ממוצע 30 ימי מסחר לפני ההענקה ($ למניה)</label><input id="fx-avg" data-fx="avg30" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-avg-note"></p></div>
           <div class="field" data-show="ESPP"><label for="fx-paid">מחיר ששילמת ($ למניה)</label><input id="fx-paid" data-fx="paid" type="number" inputmode="decimal" step="0.0001" min="0"></div>
           <div class="field"><label for="fx-sale">תאריך מכירה</label><input id="fx-sale" data-fx="saleDate" type="date"></div>
           <div class="field"><label for="fx-price">מחיר מכירה ($ למניה)</label><input id="fx-price" data-fx="price" type="number" inputmode="decimal" step="0.0001" min="0"><p class="field-note" id="fx-price-note"></p></div>
@@ -448,6 +448,10 @@
           <div class="field" id="w-offerStart">
             <label for="f-offerStart">תחילת תקופת ההצעה <bdi>(Grant Date)</bdi> <small>(לא חובה) · ל‑Lookback</small></label>
             <input id="f-offerStart" name="offerStart" type="date">
+          </div>
+          <div class="field" id="w-offerFmv">
+            <label for="f-offerFmv">מחיר השוק בתחילת ההצעה ($ למניה) <small>(לא חובה) · Grant Date FMV</small></label>
+            <input id="f-offerFmv" name="offerFmv" type="number" inputmode="decimal" step="0.0001" min="0">
           </div>
           <div class="field" id="w-discountPct">
             <label for="f-discountPct">הנחת ESPP (%) <small>(לא חובה) · בדרך כלל 15</small></label>

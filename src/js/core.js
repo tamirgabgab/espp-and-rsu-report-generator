@@ -269,7 +269,8 @@
    *
    *  - Work income (marginal tax): the value at allocation minus what the
    *    employee paid, but never more than the actual gain.
-   *      ESPP: value = market price on the purchase date (Adjusted Cost Basis),
+   *      ESPP: value per share = the lower of the market price at the start of
+   *            the offering period and on the purchase date (see esppBenefit),
    *            so the work income is the discount. A per-share value typed from
    *            the trustee's statement (field avg30) replaces it.
    *      RSU:  value = average close of the 30 trading days before the grant,
@@ -283,13 +284,47 @@
    *
    * @param {object} opts  {prices: {SYMBOL: priceFile}}
    */
+  /**
+   * ESPP benefit value per share under section 102: the lower of the market
+   * price at the start of the offering period (S0) and on the purchase date (S1).
+   *  - S1: E*Trade's purchase-date FMV (Adjusted Cost Basis / qty), else the close.
+   *  - S0: E*Trade's "Grant Date FMV" (field offerFmv), else the close on the
+   *        offering start date.
+   *  - No offering start date or no S0: derived from the price paid,
+   *        paid / (1 - discount), when the discount is typed in the lot;
+   *        otherwise S1.
+   * @returns {{perShare, source: 'lookback'|'derived'|'cost', s0, s0Source, s1, discount}|null}
+   */
+  function esppBenefit(lot, prices) {
+    if (!(lot.qty > 0)) return null;
+    const p = prices && prices[lot.symbol];
+    const closeOn = iso => { const r = priceOn(p, iso); return r && r.date >= addDays(iso, -7) ? r.price : NaN; };
+    let s1 = isFinite(lot.costUsd) ? round2(lot.costUsd / lot.qty) : NaN;
+    if (!isFinite(s1) && lot.dateAcquired) s1 = closeOn(lot.dateAcquired);
+    if (!isFinite(s1)) return null;
+    let s0 = NaN, s0Source = '';
+    if (lot.offerStart) {
+      const typed = numOrNaN(lot.offerFmv);
+      if (isFinite(typed) && typed > 0) { s0 = typed; s0Source = 'etrade'; }
+      else { s0 = closeOn(lot.offerStart); if (isFinite(s0)) s0Source = 'close'; }
+    }
+    if (isFinite(s0)) return { perShare: round2(Math.min(s0, s1)), source: 'lookback', s0, s0Source, s1, discount: NaN };
+    const d = lot.discountPct === '' || lot.discountPct === undefined || lot.discountPct === null ? NaN : +lot.discountPct;
+    const paid = numOrNaN(lot.paidUsd);
+    if (isFinite(d) && d >= 0 && d < 100 && isFinite(paid) && paid > 0) {
+      const derived = round2(paid / lot.qty / (1 - d / 100));
+      return { perShare: Math.min(derived, s1), source: 'derived', s0: NaN, s0Source: '', s1, discount: d };
+    }
+    return { perShare: s1, source: 'cost', s0: NaN, s0Source: '', s1, discount: NaN };
+  }
+
   function computeLot102(lot, rates, overrides = {}, { prices } = {}) {
     const isRsu = lot.planType === 'RSU';
     const alloc = allocationDate(lot);
     const issues = [];
     if (!alloc) issues.push(isRsu ? 'חסר תאריך הענקה (Grant Date), שנדרש במסלול 102' : 'חסר תאריך רכישה');
     if (alloc && lot.dateSold && alloc > lot.dateSold) issues.push('תאריך ההקצאה מאוחר מתאריך המכירה');
-    let baseUsd = NaN, baseSource = 'cost', avg = null;
+    let baseUsd = NaN, baseSource = 'cost', avg = null, espp = null;
     if (isRsu) {
       const manual = numOrNaN(lot.avg30);
       if (!(lot.qty > 0)) issues.push('חסרה כמות מניות, שנדרשת לחישוב שווי ההטבה');
@@ -302,7 +337,11 @@
     } else {
       const manual = numOrNaN(lot.avg30);
       if (isFinite(manual) && manual > 0 && lot.qty > 0) { baseUsd = round2(manual * lot.qty); baseSource = 'manual'; }
-      else {
+      else if ((espp = esppBenefit(lot, prices))) {
+        baseSource = espp.source;
+        // Keep E*Trade's total when the purchase-date price is the value, so it matches to the cent.
+        baseUsd = espp.perShare === espp.s1 && isFinite(lot.costUsd) ? lot.costUsd : round2(espp.perShare * lot.qty);
+      } else {
         baseUsd = lot.costUsd;
         if (!isFinite(baseUsd)) issues.push('חסרה עלות בדולרים (השווי ביום הרכישה)');
       }
@@ -317,7 +356,7 @@
     const paidKnown = isRsu || isFinite(paidRaw);
     const paid = isFinite(paidRaw) ? paidRaw : isRsu ? 0 : baseUsd; // unknown ESPP price: no work part
     const unlock = unlockDate(alloc);
-    const base = { track: '102', alloc, unlock, baseUsd, baseSource, avg, paidUsd: paid, paidKnown };
+    const base = { track: '102', alloc, unlock, baseUsd, baseSource, avg, espp, paidUsd: paid, paidKnown };
     const net = lot.proceedsUsd - fees;
 
     if (lot.dateSold < unlock) {
@@ -536,7 +575,7 @@
   // ---------------------------------------------------------------- backup / restore
 
   const BACKUP_APP = 'espp-rsu-1399';
-  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'withheldCapIls', 'offerStart', 'discountPct'];
+  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'withheldCapIls', 'offerStart', 'discountPct', 'offerFmv'];
   const HOLDING_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'grantDate', 'costPerShare', 'paidPerShare', 'avg30', 'sec102'];
   const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate', 'marginalRate', 'niRate', 'includeNi', 'priorLoss']; // never the ID number
 
@@ -552,7 +591,7 @@
     for (const k of ['dateAcquired', 'dateSold', 'grantDate', 'offerStart']) lot[k] = parseDate(lot[k]) || '';
     for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order', 'avg30', 'discountPct']) lot[k] = lot[k] === null ? '' : String(lot[k]);
     // withheldIls: tax the trustee withheld on the work income; withheldCapIls: on the capital gain.
-    for (const k of ['paidUsd', 'withheldIls', 'withheldCapIls']) lot[k] = numOrNaN(lot[k]);
+    for (const k of ['paidUsd', 'withheldIls', 'withheldCapIls', 'offerFmv']) lot[k] = numOrNaN(lot[k]);
     return lot;
   }
 
@@ -658,6 +697,7 @@
     acquisitionCostUsd: ['acquisitioncost'],
     purchasePrice: ['purchaseprice', 'purchasepricepershare'],
     purchaseFmv: ['purchasedatefairmktvalue', 'purchasedatefmv', 'purchasefmv', 'purchasedatefairmarketvalue'],
+    grantFmv: ['grantdatefairmktvalue', 'grantdatefmv', 'grantfmv', 'grantdatefairmarketvalue'],
   };
 
   function mapHeaders(headerRow) {
@@ -727,6 +767,7 @@
         qty,
         grantDate: planType === 'RSU' ? parseDate(get('grantDate')) || '' : '',
         offerStart: planType === 'ESPP' ? parseDate(get('grantDate')) || '' : '', // E*Trade's ESPP "Grant Date" = offering start
+        offerFmv: planType === 'ESPP' ? parseMoney(get('grantFmv')) : NaN, // price per share at the offering start
         paidUsd,
         dateAcquired: parseDate(get('dateAcquired')),
         dateSold,
@@ -886,6 +927,12 @@
       const a0 = avgCloseBefore(p, lot.grantDate), a1 = avgCloseBefore(p, sc.grantDate);
       base.avg30 = isFinite(manualBenefit) && manualBenefit > 0 ? (a0 && a1 ? String(Math.round(manualBenefit * (a1.avg / a0.avg) * 10000) / 10000) : '') : '';
     }
+    if (moved.offer) {
+      base.offerStart = sc.offerStart;
+      // E*Trade's offering-start price moves with the market, like the other actual numbers.
+      const c0 = priceOn(p, offeringStart(lot)), c1 = priceOn(p, sc.offerStart);
+      base.offerFmv = isFinite(lot.offerFmv) && lot.offerFmv > 0 && c0 && c1 ? round2(lot.offerFmv * (c1.price / c0.price)) : NaN;
+    }
     if ((moved.buy || moved.offer) && p) {
       // Scale the actual numbers by the change in market prices, so an unmoved
       // date gives back exactly the real figures whatever the plan's FMV rule is.
@@ -1029,6 +1076,7 @@
         paidUsd: planType === 'ESPP' && isFinite(details.purchasePrice) && isFinite(qty) ? round2(details.purchasePrice * qty) : planType === 'RSU' ? 0 : NaN,
         grantDate: planType === 'RSU' ? details.grantDate || '' : '',
         offerStart: planType === 'ESPP' ? details.grantDate || '' : '',
+        offerFmv: planType === 'ESPP' && isFinite(details.grantFmv) ? details.grantFmv : NaN,
         order: (lines.slice(i, end).join(' ').match(/Order\W{0,3}\s*(\d{6,})/i) || [])[1] || '',
         timeSold: '',
       };
@@ -1168,6 +1216,6 @@
     makeBackup, parseBackup, mergeLots, lotKey, cleanLot, cleanHolding, cleanProfile,
     avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
     parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, snapSymbol,
-    ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots,
+    ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots, esppBenefit,
   };
 });

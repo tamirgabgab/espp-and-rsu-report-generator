@@ -529,8 +529,17 @@ Decisions taken with the owner:
 - **L4:** two trustee-withholding fields per lot: `withheldIls` (work income,
   the old field) and `withheldCapIls` (capital gain). The summary shows what is
   still due for each. Old data: `withheldIls` is read as work-income withholding.
-- **L5:** ESPP 102 keeps "market value on the purchase date"; the optional
-  `avg30` field becomes "benefit value per share" from the trustee's report.
+  The owner's trustee report splits the two, so no "single total" field was
+  added; if one is ever needed, split it work first (the marginal-tax estimate),
+  the rest to the capital gain.
+- **L5 (revised later the same day):** ESPP 102 value per share = the lower of
+  the price at the offering start and on the purchase date (`Core.esppBenefit`).
+  E*Trade's figures first (Grant Date FMV in the new lot field `offerFmv`,
+  purchase FMV from the cost), closing prices as a fallback; with no offering
+  start it is derived from the price paid and a typed discount, else the
+  purchase price. The optional `avg30` field is "benefit value per share" from
+  the trustee's report and overrides. No real trustee report was available to
+  compare.
 - **L6:** default 35% + 12% national insurance (new users only; a saved profile
   keeps 47%).
 - **L7:** a January–June loss reduces the July–December advance.
@@ -547,7 +556,7 @@ Other fixes: L2 (fees deducted once in "what if"), L8 (`Core.localISO`), L9
 day-first), D1 (`check_boi_history` refuses a shrunk or out-of-range BOI file),
 D2 (failed secondary sources print a `::warning::`), D3 (split-adjusted note).
 
-Tests: 51 Node tests and 6 Python tests (`tests/test_update_rates.py`, now in
+Tests: 55 Node tests and 6 Python tests (`tests/test_update_rates.py`, now in
 `tests.yml`). Browser check: summary carry and withholding, the 102 editor
 fields, the panel, the RSU grant handle, simulator, formulas tab and PDF
 preview, no console errors, no overflow at 375 px.

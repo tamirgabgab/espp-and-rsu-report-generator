@@ -89,8 +89,8 @@ test('E*Trade G&L rows: skips summary, uses adjusted cost basis, splits lots', (
   const rows = [
     ['Record Type', 'Symbol', 'Plan Type', 'Quantity', 'Date Acquired', 'Acquisition Cost', 'Adjusted Cost Basis', 'Date Sold', 'Total Proceeds', 'Order Number'],
     ['Summary', '', '', 27, '', '$3,033.40', '$4,000.00', '', '$6,300.00', ''],
-    ['Sell', 'QCOM', 'ESPP', 17, '01/31/2024', '$1,909.78', '$2,524.67', '05/11/2026', '$3,938.96', '102642608'],
-    ['Sell', 'QCOM', 'RS', 10, '08/20/2024', '$0.00', '$1,800.00', '05/11/2026', '$2,317.04', '102642608'],
+    ['Sell', 'QCOM', 'ESPP', 17, '01/31/2024', '$2,145.97', '$2,524.67', '05/11/2026', '$3,938.96', '100000001'],
+    ['Sell', 'QCOM', 'RS', 10, '08/20/2024', '$0.00', '$1,800.00', '05/11/2026', '$2,317.04', '100000001'],
   ];
   const { lots, warnings } = Core.parseEtradeRows(rows);
   assert.deepEqual(warnings, []);
@@ -551,4 +551,64 @@ test('what if: moving an RSU grant moves the 30-day average (L12)', () => {
   const ctx = { rates: { ...rates102, [s.variants[0].lot.grantDate]: 3.7 }, prices: PX, is102: true, settings: {} };
   assert.equal(Core.evaluateLot(s.variants[0].lot, ctx).benefitPerShare, 70);
   assert.equal(Core.whatIfLots(rsu, { offerStart: '', buyDate: rsu.dateAcquired, saleDate: rsu.dateSold, grantDate: rsu.grantDate }, PX).variants.length, 0);
+});
+
+// ---------------------------------------------------------------- ESPP 102: lower of offering start and purchase
+
+test('ESPP under 102: benefit value is the lower of the offering-start and purchase prices', () => {
+  // Close at the offering start (100) is below the purchase-date FMV (120): the lookback value wins.
+  const b = Core.esppBenefit(wlot, P);
+  assert.equal(b.source, 'lookback');
+  assert.equal(b.s0Source, 'close');
+  assert.equal(b.perShare, 100);
+  const c = Core.computeLot102(wlot, R2, {}, { prices: P });
+  assert.equal(c.baseUsd, 1000);
+  assert.equal(c.workUsd, 150); // 15% of 100 x 10
+  assert.equal(c.capCostUsd, 1000);
+  // E*Trade's Grant Date FMV comes first.
+  const e = Core.esppBenefit({ ...wlot, offerFmv: 98.5 }, P);
+  assert.equal(e.s0Source, 'etrade');
+  assert.equal(e.perShare, 98.5);
+  // The purchase price is lower: it is the value, and E*Trade's total is kept to the cent.
+  const up = Core.computeLot102({ ...wlot, offerFmv: 130, costUsd: 1200.04 }, R2, {}, { prices: P });
+  assert.equal(up.baseSource, 'lookback');
+  assert.equal(up.baseUsd, 1200.04);
+  // A value from the trustee's report still overrides.
+  assert.equal(Core.computeLot102({ ...wlot, avg30: '110' }, R2, {}, { prices: P }).baseSource, 'manual');
+});
+
+test('ESPP under 102: no offering start - derived from the price paid, else the purchase price', () => {
+  const noStart = { ...wlot, offerStart: '' };
+  const d = Core.esppBenefit({ ...noStart, discountPct: '15' }, P);
+  assert.equal(d.source, 'derived');
+  assert.equal(d.perShare, 100); // 85 / 0.85
+  // Never above the purchase-date price.
+  assert.equal(Core.esppBenefit({ ...noStart, discountPct: '15', paidUsd: 1100 }, P).perShare, 120);
+  const c = Core.esppBenefit(noStart, P);
+  assert.equal(c.source, 'cost');
+  assert.equal(c.perShare, 120);
+  // Without price data the offering start cannot be priced either.
+  assert.equal(Core.esppBenefit(wlot, {}).source, 'cost');
+  assert.equal(Core.computeLot102(noStart, R2, {}, { prices: P }).baseUsd, 1200);
+});
+
+test('ESPP Grant Date FMV is read from G&L and kept by cleanLot', () => {
+  const rows = [
+    ['Record Type', 'Symbol', 'Plan Type', 'Quantity', 'Date Acquired', 'Date Sold', 'Total Proceeds', 'Adjusted Cost Basis', 'Grant Date', 'Grant Date FMV', 'Purchase Price'],
+    ['Sell', 'X', 'ESPP', 10, '01/31/2024', '05/11/2026', 2000, 1200, '07/31/2023', '$98.50', 85],
+  ];
+  const { lots } = Core.parseEtradeRows(rows);
+  assert.equal(lots[0].offerStart, '2023-07-31');
+  assert.equal(lots[0].offerFmv, 98.5);
+  assert.equal(Core.cleanLot({ ...lots[0], offerFmv: null }).offerFmv, NaN);
+  assert.equal(Core.cleanLot({ ...lots[0] }).offerFmv, 98.5);
+});
+
+test('what if: a moved offering start re-prices the ESPP benefit value', () => {
+  const s = Core.whatIfLots({ ...wlot, offerFmv: 100 }, { offerStart: '2024-02-01', buyDate: wlot.dateAcquired, saleDate: wlot.dateSold }, P);
+  assert.equal(s.moved.offer, true);
+  const v = s.variants[0].lot;
+  assert.equal(v.offerStart, '2024-02-01');
+  assert.equal(v.offerFmv, 90); // 100 x 90 / 100
+  assert.equal(Core.esppBenefit(v, P).perShare, 90);
 });
