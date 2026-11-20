@@ -162,7 +162,7 @@
 
   async function readPdf(buf, progress) {
     const lib = await pdfjs();
-    const doc = await lib.getDocument({ data: new Uint8Array(buf), disableFontFace: true }).promise;
+    const doc = await lib.getDocument({ data: new Uint8Array(buf), disableFontFace: true, isEvalSupported: false }).promise;
     const pages = Math.min(doc.numPages, MAX_PAGES);
     const texts = [];
     for (let n = 1; n <= pages; n++) {

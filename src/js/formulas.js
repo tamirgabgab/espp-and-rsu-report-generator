@@ -162,7 +162,7 @@
           ? step('הכנסת עבודה: כל הרווח', 'W = P − F − Cp', `${money(r.P)} − ${money(r.F)} − ${money(r.Cp)} = ${money(c.workUsd)} $`, `המכירה לפני ${D(c.unlock)}, תום 24 החודשים מההקצאה (${D(c.alloc)}). לכן כל הרווח הוא הכנסת עבודה.`)
           : step('הכנסת עבודה', 'W = min(V, P − F) − Cp', `min(${money(r.V)}, ${money(r.P - r.F)}) − ${money(r.Cp)} = ${money(c.workUsd)} $`, st.plan === 'RSU' ? 'ב‑RSU: ממוצע 30 ימי המסחר שלפני ההענקה.' : 'ב‑ESPP: ההנחה, כלומר מחיר השוק ביום הרכישה פחות מה ששילמת.')}
         ${step('בשקלים', 'W₪ = W × Rs', `${money(c.workUsd)} × ${rs} = ${num(r.workIls)} ₪`, 'בשער של יום המכירה, כמו בניכוי של הנאמן.')}
-        ${step('מס שולי משוער', `W₪ × ${rate()}%`, `${num(r.workIls)} × ${rate()}% = ${num(r.workTax)} ₪`, `${App.profile.marginalRate}% מס שולי${App.profile.includeNi ? ` ועוד ${App.profile.niRate}% ביטוח לאומי ובריאות` : ''}. הערכה בלבד.`, 'result')}
+        ${step('מס שולי משוער', `W₪ × ${rate()}%`, `${num(r.workIls)} × ${rate()}% = ${num(r.workTax)} ₪`, `${+App.profile.marginalRate || 0}% מס שולי${App.profile.includeNi ? ` ועוד ${+App.profile.niRate || 0}% ביטוח לאומי ובריאות` : ''}. הערכה בלבד.`, 'result')}
       </ol>`;
       html += c.early ? `<p class="case">${App.esc(Core.SCENARIO_TEXT['early-102'])}</p>` : capitalSteps(r, d, 'שלב 2: רווח הון, במס של 25%');
     } else {

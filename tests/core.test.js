@@ -382,3 +382,58 @@ test('what if: moving the purchase re-prices FMV and the lookback price', () => 
   assert.equal(e.workTax, Core.roundILS(Core.roundILS(135 * 2.909) * 0.5));
   assert.equal(e.net, e.calc.proceedsIls - e.paidIls - e.workTax - e.calc.tax);
 });
+
+// ---------------------------------------------------------------- round 1 (security and data integrity)
+
+test('backup: hostile profile values are dropped or coerced', () => {
+  const evil = JSON.stringify({
+    app: 'espp-rsu-1399', version: 1, lots: [],
+    profile: { marginalRate: '<img src=x onerror=alert(1)>', niRate: '12', includeNi: 'yes', sec102: false, belonging: '<b>', place: 'abroad', name: 'x'.repeat(500), signDate: '<script>', idNumber: '123' },
+  });
+  const p = Core.parseBackup(evil).profile;
+  assert.equal(p.marginalRate, undefined);
+  assert.equal(p.niRate, 12);
+  assert.equal(p.includeNi, undefined);
+  assert.equal(p.sec102, false);
+  assert.equal(p.belonging, undefined);
+  assert.equal(p.place, 'abroad');
+  assert.equal(p.name.length, 80);
+  assert.equal(p.signDate, undefined);
+  assert.equal(p.idNumber, undefined);
+  assert.deepEqual(Core.cleanProfile({ marginalRate: 150, niRate: -1 }), {});
+  assert.deepEqual(Core.cleanProfile(null), {});
+});
+
+test('stored lots are revived by cleanLot: numbers back to NaN, unknown fields dropped', () => {
+  const l = Core.cleanLot({ symbol: 'qcom', qty: '17', proceedsUsd: null, costUsd: '', feesUsd: null, rateBuy: 3.6, evil: '<b>', sec102: 'yes' });
+  assert.equal(l.symbol, 'QCOM');
+  assert.equal(l.qty, 17);
+  assert.ok(Number.isNaN(l.proceedsUsd) && Number.isNaN(l.costUsd));
+  assert.equal(l.feesUsd, 0);
+  assert.equal(l.rateBuy, '3.6');
+  assert.equal(l.sec102, null);
+  assert.equal('evil' in l, false);
+});
+
+test('a manual rate that is not a number above 0 is an issue, not a value', () => {
+  const base = lot(1000, 1200);
+  for (const bad of ['abc', '0', '-3']) {
+    const c = Core.computeLot(base, R(3.4, 3.7), { rateSell: bad });
+    assert.equal(c.ok, false, bad);
+    assert.ok(c.issues.some(i => i.includes('השער הידני ליום המכירה')), bad);
+    assert.equal(c.issues.some(i => i.includes('לא נמצא שער')), false);
+  }
+  assert.equal(Core.computeLot(base, R(3.4, 3.7), { rateBuy: ' ' }).ok, true); // blank means "use the bundled rate"
+  assert.equal(Core.computeLot(base, R(3.4, 3.7), { rateBuy: '3.5' }).buy.manual, true);
+  const c102 = Core.computeLot102({ ...base, planType: 'ESPP', paidUsd: 900 }, R(3.4, 3.7), { rateSell: 'x' });
+  assert.equal(c102.ok, false);
+});
+
+test('importing the same lots twice adds nothing the second time', () => {
+  const a = [{ symbol: 'QCOM', dateAcquired: '2024-01-31', dateSold: '2026-05-11', qty: 17, proceedsUsd: 3938.96, costUsd: 2524.67 }];
+  const first = Core.mergeLots([], a);
+  const second = Core.mergeLots(first.merged, a.map(l => ({ ...l })));
+  assert.equal(second.merged.length, 1);
+  assert.equal(second.added, 0);
+  assert.equal(second.skipped, 1);
+});

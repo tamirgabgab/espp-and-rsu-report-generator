@@ -144,17 +144,30 @@
    * @param {object} rates  map ISO date -> rate
    * @param {object} [overrides]  {rateBuy, rateSell} manual rates
    */
+  /**
+   * The rate for one side of a lot: a manual rate when one was typed, otherwise
+   * the bundled representative rate. A manual rate that is not a number above 0
+   * is reported as an issue instead of being used.
+   */
+  function sideRate(manual, rates, iso, label, issues) {
+    if (manual !== undefined && manual !== null && String(manual).trim() !== '') {
+      const r = Number(manual);
+      if (isFinite(r) && r > 0) return { rate: r, date: iso, manual: true };
+      issues.push(`השער הידני ליום ה${label} אינו מספר גדול מאפס`);
+      return null;
+    }
+    const found = lookupRate(rates, iso);
+    if (!found && iso) issues.push(`לא נמצא שער יציג ליום ה${label} - יש להזין ידנית`);
+    return found;
+  }
+
   function computeLot(lot, rates, overrides = {}) {
     const issues = [];
-    const buy = overrides.rateBuy ? { rate: +overrides.rateBuy, date: lot.dateAcquired, manual: true }
-      : lookupRate(rates, lot.dateAcquired);
-    const sell = overrides.rateSell ? { rate: +overrides.rateSell, date: lot.dateSold, manual: true }
-      : lookupRate(rates, lot.dateSold);
     if (!lot.dateAcquired) issues.push('חסר תאריך רכישה');
     if (!lot.dateSold) issues.push('חסר תאריך מכירה');
     if (lot.dateAcquired && lot.dateSold && lot.dateAcquired > lot.dateSold) issues.push('תאריך הרכישה מאוחר מתאריך המכירה');
-    if (!buy && lot.dateAcquired) issues.push('לא נמצא שער יציג ליום הרכישה - יש להזין ידנית');
-    if (!sell && lot.dateSold) issues.push('לא נמצא שער יציג ליום המכירה - יש להזין ידנית');
+    const buy = sideRate(overrides.rateBuy, rates, lot.dateAcquired, 'רכישה', issues);
+    const sell = sideRate(overrides.rateSell, rates, lot.dateSold, 'מכירה', issues);
     if (!isFinite(lot.proceedsUsd)) issues.push('חסרה תמורה בדולרים');
     if (!isFinite(lot.costUsd)) issues.push('חסרה עלות בדולרים');
     if (issues.length) return { ok: false, issues, buy, sell };
@@ -281,9 +294,8 @@
       baseUsd = lot.costUsd;
       if (!isFinite(baseUsd)) issues.push('חסרה עלות בדולרים (השווי ביום הרכישה)');
     }
-    const sell = overrides.rateSell ? { rate: +overrides.rateSell, date: lot.dateSold, manual: true } : lookupRate(rates, lot.dateSold);
     if (!lot.dateSold) issues.push('חסר תאריך מכירה');
-    else if (!sell) issues.push('לא נמצא שער יציג ליום המכירה - יש להזין ידנית');
+    const sell = sideRate(overrides.rateSell, rates, lot.dateSold, 'מכירה', issues);
     if (!isFinite(lot.proceedsUsd)) issues.push('חסרה תמורה בדולרים');
     if (issues.length) return { ok: false, issues, track: '102', buy: null, sell };
 
@@ -534,10 +546,36 @@
     try { data = JSON.parse(text); } catch { throw new Error('הקובץ אינו קובץ גיבוי תקין (JSON פגום).'); }
     if (!data || data.app !== BACKUP_APP || !Array.isArray(data.lots)) throw new Error('הקובץ אינו קובץ גיבוי של מחולל טופס 1399.');
     if (data.version > 1) throw new Error('קובץ הגיבוי נוצר בגרסה חדשה יותר של הכלי.');
-    const profile = {};
-    for (const k of PROFILE_FIELDS) if (data.profile && data.profile[k] !== undefined) profile[k] = data.profile[k];
     const holdings = Array.isArray(data.holdings) ? data.holdings.map(cleanHolding) : [];
-    return { lots: data.lots.map(cleanLot), holdings, profile, exportedAt: data.exportedAt || null };
+    return { lots: data.lots.map(cleanLot), holdings, profile: cleanProfile(data.profile), exportedAt: data.exportedAt || null };
+  }
+
+  /**
+   * Keep only known profile fields, each coerced to its type. Profile values end
+   * up in the page and in the PDF, so a backup file or a stored profile must
+   * never carry markup or out-of-range values. Missing or invalid fields are
+   * left out, so the caller's defaults apply.
+   */
+  function cleanProfile(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    const pct = v => { const n = numOrNaN(v); return isFinite(n) && n >= 0 && n <= 100 ? n : undefined; };
+    const rules = {
+      name: v => (typeof v === 'string' ? v.slice(0, 80) : undefined),
+      belonging: v => (['0', '2', '3'].includes(String(v)) ? String(v) : undefined),
+      place: v => (v === 'israel' || v === 'abroad' ? v : undefined),
+      sec102: v => (typeof v === 'boolean' ? v : undefined),
+      includeNi: v => (typeof v === 'boolean' ? v : undefined),
+      signDate: v => (v === '' ? '' : parseDate(typeof v === 'string' ? v : '') || undefined),
+      marginalRate: pct,
+      niRate: pct,
+    };
+    for (const k of PROFILE_FIELDS) {
+      if (raw[k] === undefined || !rules[k]) continue;
+      const v = rules[k](raw[k]);
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
   }
 
   const lotKey = l => [l.symbol, l.dateAcquired, l.dateSold, l.qty, l.proceedsUsd, l.costUsd].map(v => String(v ?? '')).join('|');
@@ -1062,7 +1100,7 @@
     lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
     CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
     closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,
-    makeBackup, parseBackup, mergeLots, lotKey, cleanHolding,
+    makeBackup, parseBackup, mergeLots, lotKey, cleanLot, cleanHolding, cleanProfile,
     avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
     parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, snapSymbol,
     ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots,

@@ -29,11 +29,10 @@
   // ------------------------------------------------------------ state
 
   // The ID number is sensitive: it lives only in memory and is never written to storage.
-  const profile = Object.assign({ name: '', belonging: '2', place: 'israel', sec102: true, signDate: '', ...Core.WORK_DEFAULTS }, store.get(LS_PROFILE, {}), { idNumber: '' });
-  // JSON turns NaN into null: bring missing numbers back as NaN so isFinite() checks work.
-  const NUM_FIELDS = ['qty', 'proceedsUsd', 'costUsd', 'paidUsd', 'withheldIls'];
-  const revive = l => { const o = { ...l }; for (const k of NUM_FIELDS) if (o[k] === null || o[k] === '' || o[k] === undefined) o[k] = NaN; if (!isFinite(o.feesUsd)) o.feesUsd = 0; return o; };
-  let lots = store.get(LS_LOTS, []).map(l => ({ ...revive(l), id: nextId++ }));
+  // Stored data is checked like a backup file: known fields only, each coerced to its type.
+  const profile = Object.assign({ name: '', belonging: '2', place: 'israel', sec102: true, signDate: '', ...Core.WORK_DEFAULTS }, Core.cleanProfile(store.get(LS_PROFILE, {})), { idNumber: '' });
+  const storedLots = store.get(LS_LOTS, []);
+  let lots = (Array.isArray(storedLots) ? storedLots : []).map(l => ({ ...Core.cleanLot(l), id: nextId++ }));
   let yearFilter = 'all';
   let lastImport = null; // {name, buf}: the E*Trade file imported in this session (memory only, for the ZIP)
   const openPanels = new Set();
@@ -446,6 +445,7 @@
     clearTimeout(draftTimer); // a pending save belongs to the previous session
     const lot = id ? lots.find(l => l.id === id) : { ...blankLot(), ...(prefill || {}) };
     editingId = id || null;
+    editingKey = id ? Core.lotKey(lot) : 'new';
     $('#lot-dialog-title').textContent = id ? 'עריכת עסקה' : 'עסקה חדשה';
     for (const k of ['symbol', 'planType', 'dateAcquired', 'dateSold', 'timeSold', 'rateBuy', 'rateSell', 'grantDate', 'avg30', 'offerStart', 'discountPct']) F(k).value = lot[k] ?? '';
     for (const k of ['qty', 'proceedsUsd', 'costUsd', 'feesUsd', 'paidUsd', 'withheldIls']) F(k).value = isFinite(lot[k]) ? lot[k] : '';
@@ -470,12 +470,19 @@
   let initialSnapshot = '';
   let draftTimer;
   let savingLot = false;
-  const draftKey = () => (editingId ? `lot-${editingId}` : 'new');
+  // Lot ids are session counters, so a draft is tied to the lot's content instead.
+  let editingKey = 'new';
+  const draftKey = () => (editingId ? `lot:${editingKey}` : 'new');
   const readForm = () => Object.fromEntries([...DRAFT_FIELDS.map(k => [k, F(k).value]), ['sec102', F('sec102').checked]]);
 
   function saveDraft() {
     const values = readForm();
-    if (JSON.stringify(values) === initialSnapshot) { store.set(LS_DRAFT, null); return; }
+    if (JSON.stringify(values) === initialSnapshot) {
+      // Unchanged: forget this editor's own draft, but keep a draft that belongs to another lot.
+      const d = store.get(LS_DRAFT, null);
+      if (d && d.key === draftKey()) store.set(LS_DRAFT, null);
+      return;
+    }
     store.set(LS_DRAFT, { key: draftKey(), at: Date.now(), values });
   }
 
@@ -549,6 +556,8 @@
     dateSold: v => (!v ? 'צריך תאריך מכירה' : F('dateAcquired').value && v < F('dateAcquired').value ? 'תאריך המכירה מוקדם מתאריך הרכישה' : null),
     proceedsUsd: v => (v === '' ? 'צריך את התמורה בדולרים' : +v < 0 ? 'התמורה לא יכולה להיות שלילית' : null),
     costUsd: v => (v === '' && !isRsu102Form() ? 'צריך את העלות בדולרים' : +v < 0 ? 'העלות לא יכולה להיות שלילית' : null),
+    rateBuy: v => (v !== '' && !(+v > 0) ? 'השער צריך להיות מספר גדול מאפס' : null),
+    rateSell: v => (v !== '' && !(+v > 0) ? 'השער צריך להיות מספר גדול מאפס' : null),
   };
 
   function validateField(name) {
@@ -565,7 +574,7 @@
     const results = Object.keys(FIELD_RULES).map(validateField);
     if (results.includes(false)) {
       const first = form.querySelector('[aria-invalid="true"]');
-      if (first) first.focus();
+      if (first) { const box = first.closest('details'); if (box) box.open = true; first.focus(); }
       return;
     }
     const num = k => (F(k).value === '' ? NaN : +F(k).value);
@@ -703,6 +712,9 @@
     el.appendChild(row);
   }
 
+  /** Sentence about lots that were already in the list and were skipped. */
+  const dupNote = n => (n ? ` ${n === 1 ? 'מכירה אחת כבר הייתה' : `${n} מכירות כבר היו`} ברשימה ולא ${n === 1 ? 'נוספה' : 'נוספו'} שוב.` : '');
+
   const errDetails = e => `${e && e.name ? e.name : 'Error'}: ${e && e.message ? e.message : e}\n${(e && e.stack) || ''}`;
 
   async function importFile(file) {
@@ -721,12 +733,13 @@
         if (res.lots.length > best.lots.length) best = res;
       }
       if (!best.lots.length) { setMsg(msg, `לא יובאו עסקאות. ${best.warnings.join(' · ')}`, 'err'); return; }
-      const before = lots.length;
-      lots = lots.concat(best.lots.map(l => ({ ...blankLot(), ...l, sec102: null })));
+      const { merged, added, skipped } = Core.mergeLots(lots, best.lots.map(l => ({ ...blankLot(), ...l, sec102: null })));
+      if (!added) { setMsg(msg, `כל ${skipped === 1 ? 'המכירה' : `${skipped} המכירות`} בקובץ ${file.name} כבר ברשימה, ולכן לא נוסף דבר.`, 'warn'); return; }
+      lots = merged;
       yearFilter = 'all';
       render();
       const extra = best.warnings.length ? ` שים לב: ${best.warnings.join(' · ')}` : '';
-      setMsg(msg, `יובאו ${lots.length - before} מכירות מהקובץ ${file.name}.${extra}`, best.warnings.length ? 'warn' : 'ok');
+      setMsg(msg, `יובאו ${added} מכירות מהקובץ ${file.name}.${dupNote(skipped)}${extra}`, best.warnings.length || skipped ? 'warn' : 'ok');
       scrollToEl($('#hero'));
     } catch (e) {
       console.error(e);
@@ -830,12 +843,16 @@
     });
     docDlg().close();
     if (!added.length) return;
-    lots = lots.concat(added);
-    lastImport = { name: docState.file.name, buf: docState.buf };
+    const name = docState.file.name;
+    const res = Core.mergeLots(lots, added);
+    if (!res.added) { setMsg($('#import-msg'), `העסקאות מהקובץ ${name} כבר ברשימה, ולכן לא נוסף דבר.`, 'warn'); return; }
+    const fresh = res.merged.slice(lots.length);
+    lots = res.merged;
+    lastImport = { name, buf: docState.buf };
     yearFilter = 'all';
     render();
-    setMsg($('#import-msg'), `נוספו ${added.length === 1 ? 'עסקה אחת' : `${added.length} עסקאות`} מהקובץ ${docState.file.name}. הנתונים זוהו אוטומטית, אז כדאי לעבור על "הצגת החישוב".`, 'ok');
-    focusLot(added[0].id, 'edit');
+    setMsg($('#import-msg'), `נוספו ${res.added === 1 ? 'עסקה אחת' : `${res.added} עסקאות`} מהקובץ ${name}.${dupNote(res.skipped)} הנתונים זוהו אוטומטית, אז כדאי לעבור על "הצגת החישוב".`, res.skipped ? 'warn' : 'ok');
+    focusLot(fresh[0].id, 'edit');
   }
 
   function bindDocDialog() {
@@ -1050,7 +1067,7 @@
       }
       // disableFontFace: the form's embedded Hebrew CID fonts render garbled through
       // the browser's FontFace path; drawing glyphs as paths renders them correctly.
-      const doc = await window.pdfjsLib.getDocument({ data: bytes, disableFontFace: true }).promise;
+      const doc = await window.pdfjsLib.getDocument({ data: bytes, disableFontFace: true, isEvalSupported: false }).promise;
       clearTimeout(skel);
       pages.innerHTML = '';
       const width = Math.min(pages.clientWidth - 32, 820);

@@ -476,11 +476,13 @@
           <div class="grid grid-2">
             <div class="field">
               <label for="f-rateBuy">שער רכישה</label>
-              <input id="f-rateBuy" name="rateBuy" type="number" inputmode="decimal" step="0.001" min="0">
+              <input id="f-rateBuy" name="rateBuy" type="number" inputmode="decimal" step="0.001" min="0" aria-describedby="e-rateBuy">
+              <p class="field-error" id="e-rateBuy"></p>
             </div>
             <div class="field">
               <label for="f-rateSell">שער מכירה</label>
-              <input id="f-rateSell" name="rateSell" type="number" inputmode="decimal" step="0.001" min="0">
+              <input id="f-rateSell" name="rateSell" type="number" inputmode="decimal" step="0.001" min="0" aria-describedby="e-rateSell">
+              <p class="field-error" id="e-rateSell"></p>
             </div>
           </div>
         </details>

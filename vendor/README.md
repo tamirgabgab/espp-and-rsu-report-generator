@@ -18,9 +18,17 @@ tests. They are committed so the site does not depend on a CDN.
 pdf.js, JSZip and Tesseract are loaded lazily: pdf.js for the PDF preview and
 for reading uploaded PDFs, JSZip for the accountant package, and Tesseract
 (about 7 MB with the English model) only when a screenshot or a scanned PDF is
-uploaded. The browser picks the SIMD build of the Tesseract core when it can. pdf.js It runs with
+uploaded. The browser picks the SIMD build of the Tesseract core when it can. pdf.js runs with
 `disableFontFace: true`, because the form's embedded Hebrew CID fonts render
-garbled through the browser's FontFace path.
+garbled through the browser's FontFace path, and with `isEvalSupported: false`,
+the official mitigation for CVE-2024-4367 in pdf.js before 4.2.67 (uploaded PDFs
+are untrusted input). Upgrading pdf.js to 4.x is planned (plan.md, S2 and P3).
+
+SheetJS 0.18.5 has two published advisories for reading crafted files
+(CVE-2023-30533, CVE-2024-22363). The fixed release, 0.20.3, is published only
+on `cdn.sheetjs.com`, not on npm: download
+`https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js` and replace
+`xlsx.full.min.js` (plan.md, S3).
 
 To upgrade, download the package with `npm pack <name>@<version>` and copy the
 file from its `dist/` folder. Then run `npm test` and `npm run sample`.
