@@ -17,7 +17,7 @@
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ } },
   };
 
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => Core.localISO();
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = n => (isFinite(n) ? (n < 0 ? `(${Math.abs(n).toLocaleString('en-US')})` : n.toLocaleString('en-US')) : '');
   const ils = n => `${fmt(n)} ₪`;
@@ -37,7 +37,7 @@
   let lastImport = null; // {name, buf}: the E*Trade file imported in this session (memory only, for the ZIP)
   const openPanels = new Set();
 
-  const blankLot = () => ({ id: nextId++, symbol: '', planType: 'ESPP', qty: NaN, dateAcquired: '', dateSold: '', timeSold: '', proceedsUsd: NaN, costUsd: NaN, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '', grantDate: '', paidUsd: NaN, avg30: '', withheldIls: NaN, offerStart: '', discountPct: '' });
+  const blankLot = () => ({ id: nextId++, symbol: '', planType: 'ESPP', qty: NaN, dateAcquired: '', dateSold: '', timeSold: '', proceedsUsd: NaN, costUsd: NaN, feesUsd: 0, sec102: null, rateBuy: '', rateSell: '', order: '', grantDate: '', paidUsd: NaN, avg30: '', withheldIls: NaN, withheldCapIls: NaN, offerStart: '', discountPct: '' });
 
   const EXAMPLE = [
     { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', timeSold: '11:02', proceedsUsd: 3938.96, costUsd: 2524.67, paidUsd: 2145.97, feesUsd: 0 },
@@ -72,8 +72,28 @@
   const formItems = ok => ok.filter(it => !it.calc.noForm);
 
   /** Lots in the current year filter (lots without a sale date stay visible so they can be fixed). */
+  const inFilter = l => yearFilter === 'all' || !l.dateSold || yearOf(l) === yearFilter;
   function visibleItems() {
-    return lots.filter(l => yearFilter === 'all' || !l.dateSold || yearOf(l) === yearFilter).map(computeItem);
+    return lots.filter(inFilter).map(computeItem);
+  }
+
+  /**
+   * Half-year and year totals for the years of `items`. Losses carry forward
+   * across years, so the totals are computed over every valid lot (and the loss
+   * typed for earlier years) and then narrowed to the years asked for.
+   */
+  function summaryFor(items, allOk = lots.map(computeItem).filter(it => it.calc.ok)) {
+    const years = new Set(items.map(it => yearOf(it.lot)));
+    return Core.summarize(allOk, { priorLoss: profile.priorLoss }).filter(g => years.has(g.key.slice(0, 4)));
+  }
+
+  /** Loss (<= 0) carried into a year from the years before it. */
+  function carryInto(year) {
+    const groups = Core.summarize(lots.map(computeItem).filter(it => it.calc.ok), { priorLoss: profile.priorLoss });
+    const y = groups.find(g => g.isYear && g.key === String(year));
+    if (y) return y.carryIn;
+    const before = groups.filter(g => g.isYear && g.key < String(year)).pop();
+    return before ? before.carryLoss : -(+profile.priorLoss || 0);
   }
 
   // ------------------------------------------------------------ toasts
@@ -101,12 +121,13 @@
 
   function render() {
     sortLots();
-    const items = visibleItems();
     renderYearFilter();
+    const all = lots.map(computeItem);
+    const items = all.filter(it => inFilter(it.lot));
     renderLots(items);
     const ok = items.filter(it => it.calc.ok);
-    const groups = Core.summarize(ok);
-    renderHero(ok, groups);
+    const groups = summaryFor(ok, all.filter(it => it.calc.ok));
+    renderHero(ok, groups, items.length);
     renderSummary(groups);
     renderChart();
     renderExportScope(ok, items.length - ok.length);
@@ -228,7 +249,8 @@
     const mRate = (+profile.marginalRate || 0) + (profile.includeNi ? +profile.niRate || 0 : 0);
     if (it.is102) {
       const vLabel = calc.baseSource === 'avg30' ? `שווי ההטבה <span class="muted">(ממוצע 30 יום: ${calc.avg.avg} × ${it.lot.qty})</span>`
-        : calc.baseSource === 'manual' ? 'שווי ההטבה <span class="muted">(ממוצע 30 יום, ידני)</span>' : 'שווי ההטבה <span class="muted">(ביום הרכישה)</span>';
+        : calc.baseSource === 'manual' ? `שווי ההטבה <span class="muted">(${it.lot.planType === 'RSU' ? 'ממוצע 30 יום, ידני' : 'מדוח הנאמן'})</span>`
+          : 'שווי ההטבה <span class="muted">(מחיר השוק ביום הרכישה)</span>';
       if (!calc.early) rows.push(row(vLabel, calc.baseUsd, '', NaN));
       rows.push(row(`שולם${calc.paidKnown ? '' : ' <span class="muted">(חסר, נחשב כ‑0 הנחה)</span>'}`, calc.paidUsd, '', NaN));
       rows.push(row(`הכנסת עבודה${calc.early ? ' <span class="muted">(כל הרווח)</span>' : ''}`, calc.workUsd, rateCell(calc.sell), calc.workIls, 'hl'));
@@ -245,14 +267,25 @@
       results.push(`<dt>רווח ריאלי <span class="muted">(${rule})</span></dt><dd class="big ${calc.real > 0 ? 'gain' : calc.real < 0 ? 'loss' : ''}">${ils(calc.real)}</dd>`);
       results.push(`<dt>מס רווח הון 25% <span class="muted">(לפני קיזוז)</span></dt><dd class="big">${ils(calc.tax)}</dd>`);
     }
+    const capW = it.lot.withheldCapIls, workW = it.lot.withheldIls;
+    if (!calc.noForm && isFinite(capW)) {
+      results.push(`<dt>נוכה ע"י הנאמן על רווח ההון</dt><dd>${ils(capW)}</dd>`);
+      results.push(`<dt>${calc.tax >= capW ? 'עוד לתשלום' : 'יתרה לזכותך'} <span class="muted">(לפני קיזוז)</span></dt><dd class="big">${ils(Math.abs(calc.tax - capW))}</dd>`);
+    }
     if (it.is102) results.push(`<dt>מס שולי משוער ${mRate}% <span class="muted">(הנאמן מנכה)</span></dt><dd class="big">${ils(it.workTax)}</dd>`);
+    if (it.is102 && isFinite(workW)) {
+      const diff = it.workTax - workW;
+      results.push(`<dt>נוכה ע"י הנאמן על הכנסת העבודה</dt><dd>${ils(workW)}</dd>`);
+      results.push(`<dt>${diff >= 0 ? 'עוד לתשלום, לפי ההערכה' : 'נוכה יותר מההערכה'}</dt><dd>${ils(Math.abs(diff))}</dd>`);
+    }
     const notes = [];
     if (it.is102) notes.push(calc.early ? Core.SCENARIO_TEXT['early-102'] : `מסלול 102: הקצאה ב‑${D(calc.alloc)}, ומכירה במסלול ההוני מ‑${D(calc.unlock)}. הכנסת העבודה לא נכנסת לטופס 1399.`);
     if (!calc.noForm) notes.push(Core.SCENARIO_TEXT[calc.scenario] || '');
-    if (isFinite(it.lot.withheldIls)) {
-      const est = it.workTax + calc.tax, diff = it.lot.withheldIls - est;
-      notes.push(`הנאמן ניכה ${ils(it.lot.withheldIls)}, וההערכה כאן ${ils(est)}. ההפרש ${signed(diff)} ₪${Math.abs(diff) > Math.max(100, est * 0.05) ? ', יותר מ‑5%: כדאי לבדוק את שיעור המס השולי עם הנאמן.' : ', בטווח הסביר.'}`);
+    if (it.is102 && isFinite(workW) && Math.abs(it.workTax - workW) > Math.max(100, it.workTax * 0.05)) {
+      notes.push('הניכוי על הכנסת העבודה שונה מההערכה ביותר מ‑5%. כדאי לבדוק את שיעור המס השולי שהוגדר מול דוח הנאמן.');
     }
+    if (it.is102 && calc.baseSource === 'cost' && it.lot.planType === 'ESPP') notes.push('שווי ההטבה ב‑ESPP נלקח ממחיר השוק ביום הרכישה. אם בדוח הנאמן מופיע שווי אחר (למשל ממוצע 30 ימי מסחר), אפשר להקליד אותו בעריכת העסקה.');
+    if (it.is102 && calc.baseSource === 'avg30') notes.push('ממוצע 30 הימים מחושב ממחירי סגירה מ‑Yahoo, שמתואמים לפיצולי מניה. אם הסכום בדוח הנאמן שונה, עדיף להקליד אותו בעריכת העסקה.');
     return `<div class="panel">
       <div class="table-scroll"><table class="mini-table calc-table">
         <thead><tr><th scope="col"></th><th scope="col">$</th><th scope="col">שער</th><th scope="col">₪</th></tr></thead>
@@ -354,7 +387,7 @@
     return h === '1' ? `${y}-07-31` : `${+y + 1}-01-31`;
   }
 
-  function renderHero(ok, groups) {
+  function renderHero(ok, groups, shown) {
     const hero = $('#hero');
     const sticky = $('#sticky');
     const show = ok.length > 0;
@@ -374,20 +407,23 @@
     $('#t-net-sub').textContent = `${scope}, אחרי קיזוז הפסדים`;
     $('#t-tax').textContent = ils(tax);
     const workTaxAll = ok.reduce((a, it) => a + it.workTax, 0);
-    $('#t-tax-sub').textContent = workTaxAll > 0 ? `ועוד כ‑${ils(workTaxAll)} מס שולי על הכנסת עבודה (102)`
-      : years.some(g => g.carryLoss < 0) ? 'יש הפסד להעברה לשנה הבאה' : 'לפני מס יסף, אם חל';
+    const perYear = years.length > 1 ? years.map(g => `${g.key}: ${ils(g.tax)}`).join(' · ') : '';
+    const carried = years.length && years[0].carryIn < 0 ? `אחרי קיזוז הפסד מועבר של ${ils(-years[0].carryIn)}` : '';
+    $('#t-tax-sub').textContent = [perYear, workTaxAll > 0 ? `ועוד כ‑${ils(workTaxAll)} מס שולי על הכנסת עבודה (102)` : '', !perYear ? carried : '']
+      .filter(Boolean).join('. ') || (years.some(g => g.carryLoss < 0) ? 'יש הפסד להעברה לשנה הבאה' : 'לפני מס יסף, אם חל');
 
     const upcoming = halves.map(g => ({ g, due: dueDate(g.key) })).filter(x => x.due >= today()).sort((a, b) => a.due.localeCompare(b.due))[0];
     if (upcoming) {
-      $('#t-due').textContent = upcoming.g.tax > 0 ? ils(upcoming.g.tax) : 'אין לתשלום';
-      $('#t-due-sub').textContent = `עד ${Core.formatDateIL(upcoming.due)} · ${upcoming.g.label}`;
+      const g = upcoming.g;
+      $('#t-due').textContent = g.due > 0 ? ils(g.due) : 'אין לתשלום';
+      $('#t-due-sub').textContent = `עד ${Core.formatDateIL(upcoming.due)} · ${g.label}${g.withheldCap > 0 ? ` · אחרי ${ils(g.withheldCap)} שהנאמן ניכה` : ''}`;
     } else {
       $('#t-due').textContent = '—';
       $('#t-due-sub').textContent = 'מועדי המקדמה של המכירות האלה כבר עברו';
     }
     $('#t-count').textContent = String(ok.length);
     const early = ok.filter(it => it.calc.noForm).length;
-    const bad = visibleItems().length - ok.length;
+    const bad = shown - ok.length;
     $('#t-count-sub').textContent = bad ? `ועוד ${bad} שצריך להשלים` : early ? `${early} מהן לפני תום 24 החודשים (בלי טופס)` : 'כל העסקאות תקינות';
 
     $('#s-net').textContent = ils(net);
@@ -399,7 +435,10 @@
   function renderSummary(groups) {
     const host = $('#summary');
     if (!groups.length) { host.innerHTML = '<p class="hint">הסיכום יופיע אחרי שתהיה לפחות עסקה אחת תקינה.</p>'; return; }
-    host.innerHTML = groups.map(g => `
+    host.innerHTML = groups.map(g => {
+      const workTaxG = g.workIls > 0 ? Core.workTax(g.workIls, profile) : 0;
+      const carryText = g.key.endsWith('H2') ? 'הפסד מועבר (משנים קודמות ומינואר-יוני) ₪' : 'הפסד מועבר משנים קודמות ₪';
+      return `
       <div class="sum-card ${g.isYear ? 'year' : ''}">
         <h3>${esc(g.label)}</h3>
         <dl>
@@ -408,11 +447,15 @@
           <dt>רווחים ריאליים ₪</dt><dd>${fmt(g.gains)}</dd>
           <dt>הפסדים לקיזוז ₪</dt><dd>${fmt(g.losses)}</dd>
           <dt>רווח ריאלי נטו ₪</dt><dd>${fmt(g.net)}</dd>
+          ${g.carryIn < 0 ? `<dt>${carryText}</dt><dd>${fmt(g.carryIn)}</dd><dt>חייב במס ₪</dt><dd>${fmt(g.taxable)}</dd>` : ''}
           <dt>מס משוער 25% ₪</dt><dd class="big">${fmt(g.tax)}</dd>
-          ${g.workIls > 0 ? `<dt>הכנסת עבודה (102) ₪</dt><dd>${fmt(g.workIls)}</dd><dt>מס שולי משוער ₪</dt><dd>${fmt(Core.workTax(g.workIls, profile))}</dd>` : ''}
+          ${g.withheldCap > 0 ? `<dt>נוכה ע"י הנאמן (רווח הון) ₪</dt><dd>${fmt(g.withheldCap)}</dd><dt>${g.due >= 0 ? 'עוד לתשלום ₪' : 'יתרה לזכותך ₪'}</dt><dd class="big">${fmt(Math.abs(g.due))}</dd>` : ''}
+          ${g.workIls > 0 ? `<dt>הכנסת עבודה (102) ₪</dt><dd>${fmt(g.workIls)}</dd><dt>מס שולי משוער ₪</dt><dd>${fmt(workTaxG)}</dd>` : ''}
+          ${g.withheldWork > 0 ? `<dt>נוכה ע"י הנאמן (עבודה) ₪</dt><dd>${fmt(g.withheldWork)}</dd><dt>${workTaxG >= g.withheldWork ? 'עוד לתשלום (עבודה), לפי ההערכה ₪' : 'נוכה יותר מההערכה ₪'}</dt><dd>${fmt(Math.abs(workTaxG - g.withheldWork))}</dd>` : ''}
         </dl>
-        ${g.isYear ? (g.carryLoss < 0 ? `<div class="due">הפסד להעברה לשנה הבאה: ${ils(g.carryLoss)}</div>` : '') : `<div class="due">מקדמה בדוח חצי‑שנתי עד ${Core.formatDateIL(dueDate(g.key))}</div>`}
-      </div>`).join('');
+        ${g.isYear ? (g.carryLoss < 0 ? `<div class="due">הפסד להעברה לשנה הבאה: ${ils(g.carryLoss)}</div>` : '') : `<div class="due">מקדמה בדוח חצי‑שנתי עד ${Core.formatDateIL(dueDate(g.key))}${g.carryLoss < 0 && g.key.endsWith('H1') ? `. יתרת הפסד של ${ils(-g.carryLoss)} תקטין את המקדמה של יולי‑דצמבר` : ''}</div>`}
+      </div>`;
+    }).join('');
   }
 
   // ------------------------------------------------------------ general explanation
@@ -429,8 +472,9 @@
     }
     window.RateChart.renderRateChart($('#chart'), RATES, markers, $('#tooltip'));
     const meta = window.USD_ILS_RATES;
+    const stocks = Object.keys(PRICES).map(sym => { const c = Core.lastClose(PRICES[sym]); return c ? `${sym} עד ${Core.formatDateIL(c.date)}` : ''; }).filter(Boolean);
     $('#rates-meta').textContent = meta
-      ? `מקור: בנק ישראל, שער יציג. ${meta.count} ימי פרסום, עד ${Core.formatDateIL(meta.last)}. השערים מתעדכנים פעם בשבוע.`
+      ? `מקור: בנק ישראל, שער יציג. ${meta.count} ימי פרסום, עד ${Core.formatDateIL(meta.last)}.${stocks.length ? ` מחירי מניות: ${stocks.join(', ')}.` : ''} הנתונים מתעדכנים פעם בשבוע.`
       : 'קובץ השערים לא נטען.';
   }
 
@@ -447,8 +491,9 @@
     editingId = id || null;
     editingKey = id ? Core.lotKey(lot) : 'new';
     $('#lot-dialog-title').textContent = id ? 'עריכת עסקה' : 'עסקה חדשה';
+    setPlanOptions(F('planType'), lot.planType);
     for (const k of ['symbol', 'planType', 'dateAcquired', 'dateSold', 'timeSold', 'rateBuy', 'rateSell', 'grantDate', 'avg30', 'offerStart', 'discountPct']) F(k).value = lot[k] ?? '';
-    for (const k of ['qty', 'proceedsUsd', 'costUsd', 'feesUsd', 'paidUsd', 'withheldIls']) F(k).value = isFinite(lot[k]) ? lot[k] : '';
+    for (const k of ['qty', 'proceedsUsd', 'costUsd', 'feesUsd', 'paidUsd', 'withheldIls', 'withheldCapIls']) F(k).value = isFinite(lot[k]) ? lot[k] : '';
     F('sec102').checked = sec102Of(lot);
     $('#f-paste').value = '';
     $('#f-paste-note').textContent = '';
@@ -466,7 +511,7 @@
   // ------------------------------------------------------------ editor drafts (lot data only, never the ID number)
 
   const LS_DRAFT = 'f1399.draft';
-  const DRAFT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'rateBuy', 'rateSell', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'offerStart', 'discountPct'];
+  const DRAFT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'rateBuy', 'rateSell', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'withheldCapIls', 'offerStart', 'discountPct'];
   let initialSnapshot = '';
   let draftTimer;
   let savingLot = false;
@@ -492,7 +537,7 @@
     $('#draft-banner').hidden = !show;
     if (show) {
       const t = new Date(d.at);
-      const stamp = `${Core.formatDateIL(t.toISOString().slice(0, 10))}, ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+      const stamp = `${Core.formatDateIL(Core.localISO(t))}, ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
       $('#draft-text').innerHTML = `יש טיוטה שלא נשמרה (<bdi class="ltr">${stamp}</bdi>).`;
     }
   }
@@ -521,6 +566,13 @@
     F('rateSell').placeholder = s ? `יציג: ${s.rate}` : 'אין שער יציג';
   }
 
+  const PLANS = ['ESPP', 'RSU', 'Options', 'אחר'];
+  /** Plan choices, plus the lot's own plan when it is not one of them (so it is not changed silently). */
+  const planOptions = cur => (cur && !PLANS.includes(cur) ? [cur, ...PLANS] : PLANS);
+  function setPlanOptions(select, cur) {
+    select.innerHTML = planOptions(cur).map(o => `<option>${esc(o)}</option>`).join('');
+  }
+
   const isRsu102Form = () => F('planType').value === 'RSU' && F('sec102').checked;
 
   /** Show the fields that matter for the plan type and track (ESPP / RSU, 102 or not). */
@@ -528,11 +580,14 @@
     const plan = F('planType').value;
     const s102 = F('sec102').checked && (plan === 'ESPP' || plan === 'RSU');
     $('#w-grantDate').hidden = plan !== 'RSU';
-    $('#w-avg30').hidden = !(plan === 'RSU' && s102);
+    $('#w-avg30').hidden = !s102;
+    $('#l-avg30').innerHTML = plan === 'RSU' ? 'ממוצע 30 ימי מסחר לפני ההענקה ($ למניה) <small>(לא חובה)</small>'
+      : 'שווי ההטבה למניה ($) <small>(לא חובה) · מדוח הנאמן</small>';
     $('#w-paidUsd').hidden = plan !== 'ESPP';
     $('#w-offerStart').hidden = plan !== 'ESPP';
     $('#w-discountPct').hidden = plan !== 'ESPP';
     $('#w-withheldIls').hidden = !s102;
+    $('#w-withheldCapIls').hidden = !s102;
     $('#l-dateAcquired').innerHTML = `${plan === 'RSU' ? 'תאריך הבשלה <bdi>(Vest)</bdi>' : 'תאריך רכישה'} <span class="req" aria-hidden="true">*</span>`;
     $('#l-costUsd').innerHTML = plan === 'RSU' && s102
       ? 'שווי ביום ההבשלה ($) <small>(לא חובה במסלול 102)</small>'
@@ -541,11 +596,13 @@
     // Show the automatic 30-day average as a hint.
     const note = $('#f-avg30-note');
     note.textContent = '';
+    F('avg30').placeholder = '';
+    if (plan === 'ESPP' && s102) note.textContent = 'משאירים ריק כדי להשתמש במחיר השוק ביום הרכישה (העלות). אם בדוח הנאמן מופיע שווי אחר, מקלידים אותו כאן.';
     if (plan === 'RSU' && s102) {
       const sym = F('symbol').value.trim().toUpperCase();
       const a = F('grantDate').value ? Core.avgCloseBefore(PRICES[sym], F('grantDate').value) : null;
       F('avg30').placeholder = a ? `אוטומטי: ${a.avg}` : '';
-      note.textContent = a ? `ממוצע הסגירה מ‑${Core.formatDateIL(a.from)} עד ${Core.formatDateIL(a.to)}. משאירים ריק כדי להשתמש בו.`
+      note.textContent = a ? `ממוצע הסגירה מ‑${Core.formatDateIL(a.from)} עד ${Core.formatDateIL(a.to)}, ממחירים מתואמים לפיצולים. משאירים ריק כדי להשתמש בו, או מקלידים את הסכום מדוח הנאמן.`
         : PRICES[sym] ? 'מזינים תאריך הענקה כדי לחשב את הממוצע.' : `אין מחירי מניה של ${sym || 'הנייר'} בכלי, ולכן צריך להזין את הממוצע מדוח הנאמן.`;
     }
   }
@@ -584,7 +641,7 @@
       proceedsUsd: num('proceedsUsd'), costUsd: num('costUsd'), feesUsd: isFinite(num('feesUsd')) ? num('feesUsd') : 0,
       sec102: F('sec102').checked === !!profile.sec102 ? null : F('sec102').checked,
       rateBuy: F('rateBuy').value, rateSell: F('rateSell').value,
-      grantDate: F('grantDate').value, paidUsd: num('paidUsd'), avg30: F('avg30').value, withheldIls: num('withheldIls'),
+      grantDate: F('grantDate').value, paidUsd: num('paidUsd'), avg30: F('avg30').value, withheldIls: num('withheldIls'), withheldCapIls: num('withheldCapIls'),
       offerStart: F('offerStart').value, discountPct: F('discountPct').value,
     };
     let savedId = editingId;
@@ -770,7 +827,7 @@
         <label class="check"><input type="checkbox" data-doc-on="${i}" checked> <span><b><bdi>${esc(l.symbol || '—')} ${esc(l.planType || '')}</bdi></b> · נמכרה ${Core.formatDateIL(l.dateSold) || '—'}</span></label>
         <div class="grid grid-2">
           ${docField(i, 'symbol', 'סימול', l.symbol, 'text', 'dir="ltr"')}
-          <div class="field"><label for="doc-planType-${i}">תוכנית</label><select id="doc-planType-${i}" data-doc="${i}" data-k="planType">${['ESPP', 'RSU', 'Options', 'אחר'].map(o => `<option${o === l.planType ? ' selected' : ''}>${o}</option>`).join('')}</select></div>
+          <div class="field"><label for="doc-planType-${i}">תוכנית</label><select id="doc-planType-${i}" data-doc="${i}" data-k="planType">${planOptions(l.planType).map(o => `<option${o === l.planType ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></div>
           ${docField(i, 'qty', 'כמות', n(l.qty), 'number')}
           ${docField(i, 'dateAcquired', l.planType === 'RSU' ? 'תאריך הבשלה' : 'תאריך רכישה', l.dateAcquired, 'date')}
           ${docField(i, 'dateSold', 'תאריך מכירה', l.dateSold, 'date')}
@@ -919,6 +976,7 @@
     $('#p-place').value = profile.place || 'israel';
     $('#p-date').value = profile.signDate || today();
     $('#p-102').checked = !!profile.sec102;
+    $('#p-prior-loss').value = profile.priorLoss > 0 ? profile.priorLoss : '';
     syncWorkInputs();
   }
 
@@ -933,6 +991,13 @@
     const cb = $('#p-102');
     cb.checked = !!profile.sec102;
     cb.addEventListener('change', () => { profile.sec102 = cb.checked; persist(); render(); });
+    const prior = $('#p-prior-loss');
+    prior.value = profile.priorLoss > 0 ? profile.priorLoss : '';
+    prior.addEventListener('input', () => {
+      const v = +prior.value;
+      profile.priorLoss = prior.value !== '' && isFinite(v) && v > 0 ? v : 0;
+      render();
+    });
     bindWorkSettings();
   }
 
@@ -1007,7 +1072,7 @@
     const [formBytes, fontBytes] = await Promise.all([fetchBytes(FORM_URL), fetchBytes(FONT_URL)]);
     const items = formItems(ok).map(it => ({ lot: { ...it.capLot, sec102: sec102Of(it.lot) }, calc: it.calc }));
     if (!items.length) throw new Error('אין מכירות עם רווח הון לטופס 1399');
-    return window.Pdf1399.buildPdf({ formBytes, fontBytes, profile: { ...profile, signDate: profile.signDate || today() }, items });
+    return window.Pdf1399.buildPdf({ formBytes, fontBytes, profile: { ...profile, signDate: profile.signDate || today() }, items, summary: summaryFor(ok) });
   }
 
   const fileYear = ok => (yearFilter !== 'all' ? yearFilter : [...new Set(ok.map(it => yearOf(it.lot)))].join('-'));
@@ -1109,14 +1174,16 @@
         'תמורה ₪': calc.proceedsIls, 'עלות ₪': calc.costIls, 'עמלות ₪': calc.feesIls,
         'רווח נומינלי ₪': calc.nominal, 'סכום אינפלציוני ₪': calc.inflationary, 'רווח/הפסד ריאלי ₪': calc.real, 'מס 25% ₪': calc.tax,
         'הכנסת עבודה $': is102 ? calc.workUsd : '', 'הכנסת עבודה ₪': is102 ? calc.workIls : '', 'מס שולי משוער ₪': is102 ? it.workTax : '',
-        'מס שנוכה ע"י הנאמן ₪': isFinite(it.lot.withheldIls) ? it.lot.withheldIls : '',
+        'נוכה ע"י הנאמן, עבודה ₪': isFinite(it.lot.withheldIls) ? it.lot.withheldIls : '',
+        'נוכה ע"י הנאמן, רווח הון ₪': isFinite(it.lot.withheldCapIls) ? it.lot.withheldCapIls : '',
         'הערה': calc.noForm ? 'מכירה לפני תום 24 חודשים: כל הרווח הכנסת עבודה, בלי טופס 1399' : '',
       };
     });
-    const sums = Core.summarize(ok).map(g => ({
+    const sums = summaryFor(ok).map(g => ({
       'תקופה': g.label, 'מכירות': g.count, 'תמורה ₪': g.proceedsIls, 'רווחים ריאליים ₪': g.gains,
-      'הפסדים לקיזוז ₪': g.losses, 'רווח ריאלי נטו ₪': g.net, 'מס משוער 25% ₪': g.tax,
-      'הכנסת עבודה 102 ₪': g.workIls, 'מס שולי משוער ₪': Core.workTax(g.workIls, profile),
+      'הפסדים לקיזוז ₪': g.losses, 'רווח ריאלי נטו ₪': g.net, 'הפסד מועבר ₪': g.carryIn, 'חייב במס ₪': g.taxable,
+      'מס משוער 25% ₪': g.tax, 'נוכה ע"י הנאמן, רווח הון ₪': g.withheldCap, 'עוד לתשלום ₪': g.due, 'הפסד להעברה ₪': g.carryLoss,
+      'הכנסת עבודה 102 ₪': g.workIls, 'מס שולי משוער ₪': Core.workTax(g.workIls, profile), 'נוכה ע"י הנאמן, עבודה ₪': g.withheldWork,
     }));
     const checks = [];
     for (const it of ok) {
@@ -1164,13 +1231,14 @@
     if (mode === 'replace') {
       lots = fresh;
       Object.assign(profile, data.profile);
-      if (data.holdings.length && window.Sim) window.Sim.setHoldings(data.holdings);
+      if (window.Sim) window.Sim.setHoldings(data.holdings); // "replace" replaces the simulator list too
       text = `נטענו ${fresh.length} עסקאות מהגיבוי, והרשימה הקודמת הוחלפה.`;
     } else {
       const r = Core.mergeLots(lots, fresh);
       lots = r.merged;
       if (data.holdings.length && window.Sim) window.Sim.setHoldings(beforeHoldings.concat(data.holdings));
-      for (const [k, v] of Object.entries(data.profile)) if (!profile[k]) profile[k] = v; // fill only empty details
+      // Fill only empty details; false and 0 are real choices, not empty.
+      for (const [k, v] of Object.entries(data.profile)) if (profile[k] === undefined || profile[k] === '' || (k === 'priorLoss' && !profile[k])) profile[k] = v;
       text = `נוספו ${r.added} עסקאות מהגיבוי${r.skipped ? `, ו‑${r.skipped} כפולות דולגו` : ''}.`;
     }
     yearFilter = 'all';
@@ -1202,7 +1270,7 @@
   // ------------------------------------------------------------ ZIP package for the accountant
 
   function explanationText(ok) {
-    const groups = Core.summarize(ok);
+    const groups = summaryFor(ok);
     const L = [];
     L.push('הסבר לחישוב רווח ההון ממכירת מניות – טופס 1399');
     L.push('='.repeat(48));
@@ -1214,7 +1282,7 @@
     L.push('סיכום');
     L.push('-----');
     for (const g of groups) {
-      L.push(`${g.label}: ${sales(g.count)} · רווח ריאלי נטו ${fmt(g.net)} ₪ · מס משוער 25%: ${fmt(g.tax)} ₪${g.isYear ? '' : ` · מקדמה עד ${Core.formatDateIL(dueDate(g.key))}`}`);
+      L.push(`${g.label}: ${sales(g.count)} · רווח ריאלי נטו ${fmt(g.net)} ₪${g.carryIn < 0 ? ` · הפסד מועבר ${fmt(g.carryIn)} ₪` : ''} · מס משוער 25%: ${fmt(g.tax)} ₪${g.withheldCap > 0 ? ` · נוכה ע"י הנאמן ${fmt(g.withheldCap)} ₪` : ''}${g.isYear ? (g.carryLoss < 0 ? ` · הפסד להעברה ${fmt(g.carryLoss)} ₪` : '') : ` · מקדמה עד ${Core.formatDateIL(dueDate(g.key))}`}`);
     }
     L.push('');
     L.push('פירוט המכירות');
@@ -1226,6 +1294,8 @@
       if (it.is102) {
         L.push(`   הקצאה לנאמן ${Core.formatDateIL(calc.alloc)}; תום 24 החודשים: מכירה מ-${Core.formatDateIL(calc.unlock)}.`);
         L.push(`   הכנסת עבודה ${usd(calc.workUsd)}$ = ${fmt(calc.workIls)} ₪ (שער יום המכירה); מס שולי משוער ${fmt(it.workTax)} ₪${isFinite(it.lot.withheldIls) ? `; הנאמן ניכה ${fmt(it.lot.withheldIls)} ₪` : ''}.`);
+        if (isFinite(it.lot.withheldCapIls)) L.push(`   הנאמן ניכה ${fmt(it.lot.withheldCapIls)} ₪ על רווח ההון.`);
+        if (calc.baseSource === 'manual') L.push(`   שווי ההטבה: ${it.lot.avg30}$ למניה, מדוח הנאמן.`);
         if (calc.baseSource === 'avg30') L.push(`   שווי ההטבה: ממוצע סגירה ${calc.avg.avg}$ ב-30 ימי המסחר ${Core.formatDateIL(calc.avg.from)}–${Core.formatDateIL(calc.avg.to)}.`);
         if (calc.noForm) { L.push(`   נמכר ${Core.formatDateIL(lot.dateSold)} בשער ${calc.sell.rate}. ${Core.SCENARIO_TEXT['early-102']}`); return; }
       }
@@ -1241,10 +1311,10 @@
     L.push('• חישוב לפי חוזר מס הכנסה 10/2025 (הלכת מוזס): ליחיד שרכש נייר ערך בדולרים, שער הדולר משמש כמדד.');
     L.push('  A = (תמורה $ − עלות $ − עמלות $) × שער מכירה ;  B = תמורה $ × שער מכירה − עלות $ × שער רכישה − עמלות $ × שער מכירה');
     L.push('  רווח ריאלי = הקטן מבין A ו-B כששניהם רווח; הגדול מביניהם כששניהם הפסד; 0 אם הסימנים שונים.');
-    L.push('• עלות: Adjusted Cost Basis מ-E*Trade (השווי ביום הרכישה ב-ESPP או ביום ההבשלה ב-RSU), בהנחה שההטבה מוסתה כהכנסת עבודה במשכורת.');
-    L.push('• מס: 25% על הרווח הריאלי, אחרי קיזוז הפסדים באותה תקופה. מס יסף לא חושב.');
+    L.push('• עלות במסלול הרגיל: Adjusted Cost Basis מ-E*Trade (השווי ביום הרכישה ב-ESPP או ביום ההבשלה ב-RSU), בהנחה שההטבה מוסתה כהכנסת עבודה במשכורת.');
+    L.push(`• מס: 25% על הרווח הריאלי, אחרי קיזוז הפסדים. הפסד נטו של שנה מועבר לשנים הבאות, והפסד של ינואר-יוני מקטין את המקדמה של יולי-דצמבר.${+profile.priorLoss > 0 ? ` הפסד מועבר משנים שאינן בכלי: ${fmt(+profile.priorLoss)} ₪.` : ''} מס יסף לא חושב.`);
     if (ok.some(it => it.is102)) {
-      L.push(`• סעיף 102 (מסלול רווח הון עם נאמן): הכנסת עבודה W = min(V, תמורה − עמלות) − ששולם, כאשר V הוא השווי ביום הרכישה ב-ESPP או ממוצע 30 ימי המסחר שלפני ההענקה ב-RSU. W מומרת בשער יום המכירה, והמס עליה הוא הערכה לפי ${profile.marginalRate}%${profile.includeNi ? ` ועוד ${profile.niRate}% ביטוח לאומי ובריאות` : ''}.`);
+      L.push(`• סעיף 102 (מסלול רווח הון עם נאמן): הכנסת עבודה W = min(V, תמורה − עמלות) − ששולם, כאשר V הוא השווי ביום הרכישה ב-ESPP או ממוצע 30 ימי המסחר שלפני ההענקה ב-RSU (או השווי למניה מדוח הנאמן, אם הוזן). W מומרת בשער יום המכירה, והמס עליה הוא הערכה לפי ${profile.marginalRate}%${profile.includeNi ? ` ועוד ${profile.niRate}% ביטוח לאומי ובריאות` : ''}.`);
       L.push('  רווח ההון מחושב ריאלית (חוזר 10/2025) עם עלות = ששולם + W, בשער יום ההקצאה. מכירה לפני תום 24 חודשים: כל הרווח הכנסת עבודה, בלי 1399.');
     }
     L.push('');
@@ -1408,7 +1478,7 @@
     /** Capital results already realised in the report, per tax year (for loss offset in the simulator). */
     realizedByYear(year) {
       const items = lots.filter(l => yearOf(l) === String(year)).map(computeItem).filter(it => it.calc.ok && !it.calc.noForm);
-      return items.reduce((acc, it) => { if (it.calc.real > 0) acc.gains += it.calc.real; else acc.losses += it.calc.real; return acc; }, { gains: 0, losses: 0, count: items.length });
+      return items.reduce((acc, it) => { if (it.calc.real > 0) acc.gains += it.calc.real; else acc.losses += it.calc.real; return acc; }, { gains: 0, losses: 0, count: items.length, carryIn: carryInto(year) });
     },
   };
 

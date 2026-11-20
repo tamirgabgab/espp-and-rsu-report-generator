@@ -30,6 +30,14 @@ Status words used below:
 | **Read** | Found by reading the code. Not executed. |
 | **Decision** | Needs a decision from the owner (often a tax question) before any code is written. |
 
+## Status
+
+| Round | Status |
+|---|---|
+| 1 | Done: S1, S2 (`isEvalSupported: false`; the pdf.js upgrade moves to round 3), S4, S5, S6. **S3 blocked:** SheetJS 0.20.3 is only on cdn.sheetjs.com, which this environment cannot reach; see `vendor/README.md`. **S7 deferred** by the owner. |
+| 2 | Done: L1-L15, D1-D3, with the owner's decisions recorded in `docs/HANDOFF.md`. **L16 (surtax) deferred.** |
+| 3-5 | Not started. |
+
 ## Rounds at a glance
 
 | Round | Scope | Findings | Recommended model and effort | Cheaper option |

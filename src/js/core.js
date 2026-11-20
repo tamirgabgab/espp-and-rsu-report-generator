@@ -49,14 +49,20 @@
     const s = String(value).trim();
     let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) return isoFromParts(+m[1], +m[2], +m[3]);
-    m = s.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$/);
+    m = s.match(/^(\d{1,2})([/.\-])(\d{1,2})\2(\d{2,4})$/);
     if (m) {
-      let y = +m[3];
+      let y = +m[4];
       if (y < 100) y += 2000;
-      const a = +m[1], b = +m[2];
-      return usFormat ? isoFromParts(y, a, b) : isoFromParts(y, b, a);
+      const a = +m[1], b = +m[3];
+      // "11.5.2026" is the Israeli style the app prints itself: day first.
+      return usFormat && m[2] !== '.' ? isoFromParts(y, a, b) : isoFromParts(y, b, a);
     }
     return null;
+  }
+
+  /** Local calendar date as ISO (not UTC: after midnight in Israel it is already the next day). */
+  function localISO(d = new Date()) {
+    return isoFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
   }
 
   /** "2026-05-11" -> "11.5.2026" (the style used on the paper form). */
@@ -249,7 +255,8 @@
   // ---------------------------------------------------------------- section 102 (capital-gains track, trustee)
 
   const HOLDING_MONTHS = 24;
-  const WORK_DEFAULTS = { marginalRate: 47, niRate: 12, includeNi: true };
+  // 35% is a common bracket that is still below the national-insurance ceiling, where the 12% applies.
+  const WORK_DEFAULTS = { marginalRate: 35, niRate: 12, includeNi: true };
 
   /** Allocation date to the trustee: the grant date for RSU, the purchase date for ESPP. */
   const allocationDate = lot => (lot.planType === 'RSU' ? lot.grantDate || '' : lot.dateAcquired || '');
@@ -263,8 +270,10 @@
    *  - Work income (marginal tax): the value at allocation minus what the
    *    employee paid, but never more than the actual gain.
    *      ESPP: value = market price on the purchase date (Adjusted Cost Basis),
-   *            so the work income is the discount.
-   *      RSU:  value = average close of the 30 trading days before the grant.
+   *            so the work income is the discount. A per-share value typed from
+   *            the trustee's statement (field avg30) replaces it.
+   *      RSU:  value = average close of the 30 trading days before the grant,
+   *            or the per-share value typed from the trustee's statement.
    *    Converted at the sale-date representative rate (when the trustee withholds).
    *  - Capital gain (25%): the rest. Computed as a REAL gain exactly like any
    *    other lot (Circular 10/2025), with cost = paid + work income, dated at the
@@ -291,8 +300,12 @@
         else issues.push(`אין מחירי מניה של ${lot.symbol || 'הנייר'} לחישוב ממוצע 30 הימים. אפשר להזין את הממוצע מדוח הנאמן`);
       }
     } else {
-      baseUsd = lot.costUsd;
-      if (!isFinite(baseUsd)) issues.push('חסרה עלות בדולרים (השווי ביום הרכישה)');
+      const manual = numOrNaN(lot.avg30);
+      if (isFinite(manual) && manual > 0 && lot.qty > 0) { baseUsd = round2(manual * lot.qty); baseSource = 'manual'; }
+      else {
+        baseUsd = lot.costUsd;
+        if (!isFinite(baseUsd)) issues.push('חסרה עלות בדולרים (השווי ביום הרכישה)');
+      }
     }
     if (!lot.dateSold) issues.push('חסר תאריך מכירה');
     const sell = sideRate(overrides.rateSell, rates, lot.dateSold, 'מכירה', issues);
@@ -331,13 +344,27 @@
     return workIls > 0 ? roundILS(workIls * rate / 100) : 0;
   }
 
-  /** Aggregate computed lots into half-year and yearly totals with loss offset. */
-  function summarize(items) {
+  /**
+   * Aggregate computed lots into half-year and yearly totals with loss offset.
+   *
+   * Losses are carried forward: a net loss of a year reduces the next years'
+   * gains, and inside a year a January-June loss reduces the July-December
+   * advance. `priorLoss` (a positive amount in shekels) is a loss carried from
+   * years that are not in the tool; it applies to the first year.
+   * Each group: net (its own sales), carryIn (<= 0, the loss brought in),
+   * taxable, tax, carryLoss (<= 0, the loss left after the group), and the tax
+   * the trustee already withheld (withheldCap, withheldWork) with due = tax - withheldCap.
+   * @param {{lot, calc}[]} items
+   * @param {{priorLoss?: number}} [opts]
+   */
+  function summarize(items, { priorLoss = 0 } = {}) {
     const groups = new Map();
     const add = (key, label, it) => {
-      if (!groups.has(key)) groups.set(key, { key, label, gains: 0, losses: 0, proceedsIls: 0, costIls: 0, nominal: 0, inflationary: 0, count: 0, workIls: 0, workCount: 0 });
+      if (!groups.has(key)) groups.set(key, { key, label, gains: 0, losses: 0, proceedsIls: 0, costIls: 0, nominal: 0, inflationary: 0, count: 0, workIls: 0, workCount: 0, withheldCap: 0, withheldWork: 0 });
       const g = groups.get(key);
       if (it.calc.workIls > 0) { g.workIls += it.calc.workIls; g.workCount++; }
+      if (isFinite(it.lot.withheldCapIls)) g.withheldCap += it.lot.withheldCapIls;
+      if (isFinite(it.lot.withheldIls)) g.withheldWork += it.lot.withheldIls;
       if (it.calc.noForm) return; // early 102 sale: work income only, no capital gain
       g.count++;
       g.proceedsIls += it.calc.proceedsIls;
@@ -354,12 +381,26 @@
     }
     const order = k => (k.includes('-H') ? k : `${k}-Z`); // halves first, then the year total
     const out = [...groups.values()].sort((a, b) => order(a.key).localeCompare(order(b.key)));
-    for (const g of out) {
+    const settle = (g, carryIn) => {
       g.net = g.gains + g.losses;
-      g.taxable = Math.max(g.net, 0);
+      g.carryIn = carryIn;
+      const base = g.net + carryIn;
+      g.taxable = Math.max(base, 0);
       g.tax = roundILS(g.taxable * TAX_RATE);
-      g.carryLoss = Math.min(g.net, 0);
+      g.carryLoss = Math.min(base, 0);
+      g.due = g.tax - g.withheldCap;
       g.isYear = !g.key.includes('-H');
+    };
+    let carry = isFinite(+priorLoss) && +priorLoss > 0 ? -roundILS(+priorLoss) : 0;
+    for (const y of [...new Set(out.map(g => g.key.slice(0, 4)))].sort()) {
+      let inYear = carry;
+      for (const h of ['H1', 'H2']) {
+        const g = groups.get(`${y}-${h}`);
+        if (g) { settle(g, inYear); inYear = g.carryLoss; }
+      }
+      const year = groups.get(y);
+      settle(year, carry);
+      carry = year.carryLoss;
     }
     return out;
   }
@@ -495,9 +536,9 @@
   // ---------------------------------------------------------------- backup / restore
 
   const BACKUP_APP = 'espp-rsu-1399';
-  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'offerStart', 'discountPct'];
+  const LOT_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'dateSold', 'timeSold', 'proceedsUsd', 'costUsd', 'feesUsd', 'sec102', 'rateBuy', 'rateSell', 'order', 'grantDate', 'paidUsd', 'avg30', 'withheldIls', 'withheldCapIls', 'offerStart', 'discountPct'];
   const HOLDING_FIELDS = ['symbol', 'planType', 'qty', 'dateAcquired', 'grantDate', 'costPerShare', 'paidPerShare', 'avg30', 'sec102'];
-  const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate', 'marginalRate', 'niRate', 'includeNi']; // never the ID number
+  const PROFILE_FIELDS = ['name', 'belonging', 'place', 'sec102', 'signDate', 'marginalRate', 'niRate', 'includeNi', 'priorLoss']; // never the ID number
 
   const numOrNaN = v => (v === null || v === undefined || v === '' ? NaN : Number(v));
 
@@ -510,7 +551,8 @@
     lot.symbol = String(lot.symbol || '').toUpperCase();
     for (const k of ['dateAcquired', 'dateSold', 'grantDate', 'offerStart']) lot[k] = parseDate(lot[k]) || '';
     for (const k of ['planType', 'timeSold', 'rateBuy', 'rateSell', 'order', 'avg30', 'discountPct']) lot[k] = lot[k] === null ? '' : String(lot[k]);
-    for (const k of ['paidUsd', 'withheldIls']) lot[k] = numOrNaN(lot[k]);
+    // withheldIls: tax the trustee withheld on the work income; withheldCapIls: on the capital gain.
+    for (const k of ['paidUsd', 'withheldIls', 'withheldCapIls']) lot[k] = numOrNaN(lot[k]);
     return lot;
   }
 
@@ -569,6 +611,7 @@
       signDate: v => (v === '' ? '' : parseDate(typeof v === 'string' ? v : '') || undefined),
       marginalRate: pct,
       niRate: pct,
+      priorLoss: v => { const n = numOrNaN(v); return isFinite(n) && n >= 0 ? n : undefined; },
     };
     for (const k of PROFILE_FIELDS) {
       if (raw[k] === undefined || !rules[k]) continue;
@@ -781,10 +824,16 @@
 
   /**
    * Evaluate one lot (the actual one or a "what if" variant): the capital part,
-   * the work income, the estimated taxes and the net amount, in shekels.
+   * the work income, the estimated taxes and the net amounts, in shekels.
    * For the regular track the payroll tax on the benefit is estimated too, so
    * both tracks compare like for like. A sale date after the bundled BOI rates
    * uses the last published rate.
+   *
+   * The two net amounts, used by every view:
+   *   cash = proceeds - fees - tax taken from the sale (capital gain tax, and on
+   *          the 102 track the work-income tax the trustee withholds)
+   *   net  = cash - what was paid for the shares - payroll tax paid earlier
+   *          (regular track): the profit after all taxes.
    */
   function evaluateLot(lot, { rates, prices, is102, settings }) {
     const overrides = { rateBuy: lot.rateBuy, rateSell: lot.rateSell };
@@ -802,28 +851,41 @@
       workTaxIls = workTax(workIls, settings);
       payroll = true;
     }
-    const net = calc.proceedsIls - paidIls - calc.feesIls - workTaxIls - calc.tax;
+    const cash = calc.proceedsIls - calc.feesIls - calc.tax - (payroll ? 0 : workTaxIls);
+    const net = cash - paidIls - (payroll ? workTaxIls : 0);
     return {
-      ok: true, calc, paidIls, workIls, workTax: workTaxIls, payroll, net,
+      ok: true, calc, paidIls, workIls, workTax: workTaxIls, payroll, cash, net,
       paidPerShare: lot.qty > 0 && isFinite(paid) ? round2(paid / lot.qty) : NaN,
       fmvPerShare: lot.qty > 0 && isFinite(lot.costUsd) ? round2(lot.costUsd / lot.qty) : NaN,
-      salePerShare: lot.qty > 0 ? round2((lot.proceedsUsd + (lot.feesUsd || 0)) / lot.qty) : NaN,
+      benefitPerShare: is102 && lot.qty > 0 && isFinite(calc.baseUsd) ? round2(calc.baseUsd / lot.qty) : NaN,
+      salePerShare: lot.qty > 0 ? round2(lot.proceedsUsd / lot.qty) : NaN,
     };
   }
 
   /**
    * Build the "what if" variants of a lot for moved dates.
    * A moved purchase or offering start re-prices the purchase from closing
-   * prices (FMV = close at purchase; ESPP price with lookback). A moved sale is
-   * priced at that day's low and high. Unmoved parts keep the actual numbers.
-   * @param {object} sc {offerStart, buyDate, saleDate}
+   * prices (FMV = close at purchase; ESPP price with lookback). A moved RSU
+   * grant moves the 30-day average (section 102). A moved sale is priced at that
+   * day's low and high. Unmoved parts keep the actual numbers.
+   * @param {object} sc {offerStart, buyDate, saleDate, grantDate?}
    * @returns {{moved:{offer,buy,sale}, variants: {key,label,lot}[]}}
    */
   function whatIfLots(lot, sc, prices) {
     const p = prices && prices[lot.symbol];
     const q = lot.qty;
-    const moved = { offer: lot.planType === 'ESPP' && sc.offerStart !== offeringStart(lot), buy: sc.buyDate !== lot.dateAcquired, sale: sc.saleDate !== lot.dateSold };
+    const moved = {
+      offer: lot.planType === 'ESPP' && sc.offerStart !== offeringStart(lot), buy: sc.buyDate !== lot.dateAcquired, sale: sc.saleDate !== lot.dateSold,
+      grant: lot.planType === 'RSU' && !!sc.grantDate && sc.grantDate !== lot.grantDate,
+    };
     const base = { ...lot, dateAcquired: sc.buyDate, dateSold: sc.saleDate };
+    const manualBenefit = numOrNaN(lot.avg30);
+    if (moved.grant) {
+      base.grantDate = sc.grantDate;
+      // A typed trustee value moves with the market; otherwise the average is recomputed from the new grant date.
+      const a0 = avgCloseBefore(p, lot.grantDate), a1 = avgCloseBefore(p, sc.grantDate);
+      base.avg30 = isFinite(manualBenefit) && manualBenefit > 0 ? (a0 && a1 ? String(Math.round(manualBenefit * (a1.avg / a0.avg) * 10000) / 10000) : '') : '';
+    }
     if ((moved.buy || moved.offer) && p) {
       // Scale the actual numbers by the change in market prices, so an unmoved
       // date gives back exactly the real figures whatever the plan's FMV rule is.
@@ -836,17 +898,18 @@
           const la = lookbackPrice(close(offeringStart(lot)), s1a, d);
           const ln = lookbackPrice(close(sc.offerStart), s1, d);
           if (isFinite(ln)) base.paidUsd = round2(isFinite(lot.paidUsd) && isFinite(la) ? lot.paidUsd * (ln / la) : ln * q);
+          if (isFinite(manualBenefit) && manualBenefit > 0 && isFinite(s1a)) base.avg30 = String(Math.round(manualBenefit * (s1 / s1a) * 10000) / 10000);
         }
       }
     }
     const variants = [];
     if (moved.sale && p) {
-      const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
+      // proceedsUsd is the price times the quantity; computeLot deducts the fees.
       for (const [key, label] of [['low', 'מחיר נמוך'], ['high', 'מחיר גבוה']]) {
         const px = priceOn(p, sc.saleDate, key);
-        if (px) variants.push({ key, label, price: px.price, lot: { ...base, proceedsUsd: round2(px.price * q - fees) } });
+        if (px) variants.push({ key, label, price: px.price, lot: { ...base, proceedsUsd: round2(px.price * q) } });
       }
-    } else if (moved.buy || moved.offer) {
+    } else if (moved.buy || moved.offer || moved.grant) {
       variants.push({ key: 'what', label: 'מה אם', lot: base });
     }
     return { moved, variants };
@@ -1073,13 +1136,15 @@
    */
   function simulateHolding(h, o) {
     const run = date => {
-      const lot = holdingToLot(h, { qty: o.qty, price: o.price, date });
-      const overrides = { rateSell: o.rate };
-      const calc = o.is102 ? computeLot102(lot, o.rates, overrides, { prices: o.prices }) : computeLot(lot, o.rates, overrides);
-      if (!calc.ok) return { ok: false, issues: calc.issues, lot };
-      const wTax = o.is102 ? workTax(calc.workIls, o.settings) : 0;
-      const proceedsIls = roundILS(lot.proceedsUsd * calc.sell.rate);
-      return { ok: true, lot, calc, workTax: wTax, capTax: calc.tax, net: proceedsIls - wTax - calc.tax, proceedsIls };
+      const lot = { ...holdingToLot(h, { qty: o.qty, price: o.price, date }), rateSell: o.rate };
+      const ev = evaluateLot(lot, { rates: o.rates, prices: o.prices, is102: o.is102, settings: o.settings });
+      if (!ev.ok) return { ok: false, issues: ev.issues, lot };
+      return {
+        ok: true, lot, calc: ev.calc, proceedsIls: ev.calc.proceedsIls, capTax: ev.calc.tax, paidIls: ev.paidIls,
+        workTax: ev.payroll ? 0 : ev.workTax, // taken from the sale (102)
+        payrollTax: ev.payroll ? ev.workTax : 0, // paid earlier through the payroll
+        cash: ev.cash, net: ev.net,
+      };
     };
     const now = run(o.date);
     if (!now.ok || !o.is102 || !now.calc.early) return { now };
@@ -1096,7 +1161,7 @@
   }
 
   return {
-    TAX_RATE, parseDate, formatDateIL, addDays, addMonths, halfOfYear, parseMoney, round2, roundILS,
+    TAX_RATE, parseDate, localISO, formatDateIL, addDays, addMonths, halfOfYear, parseMoney, round2, roundILS,
     lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
     CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
     closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,

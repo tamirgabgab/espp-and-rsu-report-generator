@@ -94,24 +94,18 @@
     if (issues.length) return { ok: false, issues };
 
     const P = Core.round2(price * d.qty), F = fees, V = Core.round2(perShare * d.qty), Cp = Core.round2(paidPs * d.qty);
-    const overrides = { rateBuy: isFinite(d.rb) ? d.rb : '', rateSell: d.rs };
-    let calc, workIls = 0, workTax = 0, payroll = null;
-    if (d.is102) {
-      const lot = { symbol: st.symbol, planType: st.plan, qty: d.qty, dateAcquired: st.buyDate, grantDate: st.grantDate, dateSold: st.saleDate, proceedsUsd: P, costUsd: V, paidUsd: Cp, avg30: String(d.avg), feesUsd: F };
-      calc = Core.computeLot102(lot, App.RATES, overrides, { prices: App.PRICES });
-      if (calc.ok) { workIls = calc.workIls; workTax = Core.workTax(workIls, App.profile); }
-    } else {
-      calc = Core.computeLot({ dateAcquired: st.buyDate, dateSold: st.saleDate, proceedsUsd: P, costUsd: V, feesUsd: F }, App.RATES, overrides);
-      if (calc.ok) {
-        const w0 = Core.round2(V - Cp);
-        const w0Ils = Core.roundILS(w0 * calc.buy.rate);
-        payroll = { w0, w0Ils, tax: Core.workTax(w0Ils, App.profile) };
-      }
-    }
-    if (!calc.ok) return { ok: false, issues: calc.issues };
+    // The same evaluation as the report and the "what if" table (Core.evaluateLot).
+    const lot = {
+      symbol: st.symbol, planType: st.plan, qty: d.qty, dateAcquired: st.buyDate, grantDate: st.grantDate, dateSold: st.saleDate,
+      proceedsUsd: P, costUsd: V, paidUsd: Cp, feesUsd: F, avg30: d.is102 && st.plan === 'RSU' ? String(d.avg) : '',
+      rateBuy: isFinite(d.rb) ? d.rb : '', rateSell: d.rs,
+    };
+    const ev = Core.evaluateLot(lot, { rates: App.RATES, prices: App.PRICES, is102: d.is102, settings: App.profile });
+    if (!ev.ok) return { ok: false, issues: ev.issues };
+    const calc = ev.calc;
+    const payroll = ev.payroll ? { w0: Core.round2(V - Cp), w0Ils: ev.workIls, tax: ev.workTax } : null;
     const rbUsed = calc.buy ? calc.buy.rate : d.rb;
-    const paidIls = isFinite(rbUsed) ? Core.roundILS(Cp * rbUsed) : 0;
-    return { ok: true, P, F, V, Cp, calc, workIls, workTax, payroll, rbUsed, paidIls };
+    return { ok: true, P, F, V, Cp, calc, workIls: d.is102 ? ev.workIls : 0, workTax: d.is102 ? ev.workTax : 0, payroll, rbUsed, paidIls: ev.paidIls, cash: ev.cash, net: ev.net };
   }
 
   // ------------------------------------------------------------ output
@@ -180,23 +174,23 @@
   function moneySplit(r, d) {
     const c = r.calc;
     const work = d.is102 ? r.workTax : r.payroll.tax;
-    const net = c.proceedsIls - r.paidIls - c.feesIls - work - c.tax;
+    const net = r.net;
     const segs = [
       ['paid', 'מה ששילמת על המניות', r.paidIls],
       ['fees', 'עמלות', c.feesIls],
       ['work', d.is102 ? 'מס שולי (הנאמן מנכה)' : 'מס במשכורת (שולם קודם)', work],
       ['cap', 'מס רווח הון', c.tax],
-      ['net', 'נשאר לך רווח נקי', Math.max(0, net)],
+      ['net', 'רווח נקי', Math.max(0, net)],
     ].filter(s => s[2] > 0);
     const total = segs.reduce((a, s) => a + s[2], 0) || 1;
     const gross = c.proceedsIls - r.paidIls - c.feesIls;
     const eff = gross > 0 ? Math.round(((work + c.tax) / gross) * 1000) / 10 : null;
     const label = segs.map(s => `${s[1]} ${App.ils(s[2])}`).join(', ');
     return `<h3>לאן הולך הכסף מהמכירה</h3>
-      <p class="hint">התמורה בשקלים היא ${App.ils(c.proceedsIls)}. ${d.is102 ? '' : 'המס במשכורת שולם לפני המכירה, אבל הוא חלק מהעלות של ההטבה. '}${eff !== null ? `המס הכולל הוא ${eff}% מהרווח.` : ''}</p>
+      <p class="hint">התמורה בשקלים היא ${App.ils(c.proceedsIls)}, ומזומן אחרי מס הוא ${App.ils(r.cash)}${d.is102 ? '' : ' (המס במשכורת שולם לפני המכירה, אבל הוא חלק מהעלות של ההטבה)'}. רווח נקי הוא המזומן פחות מה ששילמת${d.is102 ? '' : ' ופחות המס במשכורת'}. ${eff !== null ? `המס הכולל הוא ${eff}% מהרווח.` : ''}</p>
       <div class="fx-bar" role="img" aria-label="${App.esc(label)}">${segs.map(s => `<span class="seg seg-${s[0]}" style="width:${(s[2] / total) * 100}%"></span>`).join('')}</div>
       <ul class="fx-legend">${segs.map(s => `<li><i class="sw seg-${s[0]}"></i><span>${s[1]}</span><b>${App.ils(s[2])}</b></li>`).join('')}</ul>
-      ${net < 0 ? `<p class="case">אחרי המיסים והעלות יש הפסד נטו של ${App.ils(-net)}.</p>` : ''}`;
+      ${net < 0 ? `<p class="case">אחרי המיסים והעלות יש הפסד נקי של ${App.ils(-net)}.</p>` : ''}`;
   }
 
   function renderAll() {
@@ -263,7 +257,8 @@
 
   /** Copy a report lot into the calculator. */
   function fillFromLot(l) {
-      const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 10000) / 10000) : '');
+      // Enough decimals that per-share × quantity gives the lot's totals back to the cent.
+      const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 1e8) / 1e8) : '');
       st = {
         ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
         grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),

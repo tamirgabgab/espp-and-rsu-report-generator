@@ -504,6 +504,54 @@ Built:
 - **Tests:** 37 unit tests. The scratch QA passes 32/32 checks across the four
   views, at 375 and 1280, in light and dark.
 
+## Done (session 3, 2026-11-20): plan.md rounds 1 and 2
+
+`plan.md` lists a full review in five rounds. Rounds 1 and 2 are done; see its
+"Status" table.
+
+### Round 1: security and data integrity
+- **S1, S6:** `Core.cleanProfile` and `Core.cleanLot` check every stored or
+  restored field (numbers, enums, dates). A manual rate must be above 0
+  (`sideRate`), in the editor too.
+- **S2:** pdf.js runs with `isEvalSupported: false` (CVE-2024-4367). Upgrading
+  pdf.js is left for round 3.
+- **S3 blocked:** SheetJS 0.20.3 is only on cdn.sheetjs.com, which the network
+  policy here blocks. The owner can download it by hand (`vendor/README.md`).
+- **S4:** both imports skip lots that are already in the list (`Core.mergeLots`)
+  and say how many were skipped.
+- **S5:** a draft is keyed by the lot's content (`Core.lotKey`), not the session id.
+- **S7 (CSP):** deferred by the owner.
+
+### Round 2: tax logic and the data pipeline
+Decisions taken with the owner:
+- **L1:** carry a year's net loss automatically, plus a summary field
+  `priorLoss` for losses from years not in the tool.
+- **L4:** two trustee-withholding fields per lot: `withheldIls` (work income,
+  the old field) and `withheldCapIls` (capital gain). The summary shows what is
+  still due for each. Old data: `withheldIls` is read as work-income withholding.
+- **L5:** ESPP 102 keeps "market value on the purchase date"; the optional
+  `avg30` field becomes "benefit value per share" from the trustee's report.
+- **L6:** default 35% + 12% national insurance (new users only; a saved profile
+  keeps 47%).
+- **L7:** a January–June loss reduces the July–December advance.
+- **L3:** one definition of "cash after tax" and "net profit" in
+  `Core.evaluateLot`, used by the simulator, "what if" and the formulas tab.
+- **L12:** for RSU 102 the "what if" chart has a grant point (moves the 30-day
+  average and the 24-month date) instead of the vest point.
+- **L16 (surtax):** deferred.
+
+Other fixes: L2 (fees deducted once in "what if"), L8 (`Core.localISO`), L9
+(unknown plan types stay as they are), L10 (restore edge cases), L11 (PDF and
+`explanation.txt` notes for 102), L13 (rounding in "fill from my lot"), L14
+(the PDF summary table repeats its header across pages), L15 (`11.5.2026` is
+day-first), D1 (`check_boi_history` refuses a shrunk or out-of-range BOI file),
+D2 (failed secondary sources print a `::warning::`), D3 (split-adjusted note).
+
+Tests: 51 Node tests and 6 Python tests (`tests/test_update_rates.py`, now in
+`tests.yml`). Browser check: summary carry and withholding, the 102 editor
+fields, the panel, the RSU grant handle, simulator, formulas tab and PDF
+preview, no console errors, no overflow at 375 px.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -528,14 +576,13 @@ Built:
    - verify the holdings import and the G&L RSU columns against real E*Trade files;
    - confirm with the accountant: real vs. nominal, the ESPP work-income
      definition, and the 24-month start date;
-   - the tax the trustee withheld is only compared per lot; it is not deducted
-     from the advance-payment totals;
    - ask the accountant whether 102 sales belong in the semi-annual advance at all.
-6. **Surtax.** The 3% + 2% surtax on capital income above ₪721,560 is not
-   calculated; only a flat 25% is. Possibly add a warning when the yearly gain is large.
+6. **Surtax (plan.md L16, deferred).** The 3% + 2% surtax on capital income above
+   ₪721,560 is not calculated; only a flat 25% is. Possibly add a warning when the yearly gain is large.
 7. **Other currencies.** Only USD is supported.
 8. **Page 2 of the form** ("פרטים נוספים") is not included. It is not needed
    for simple share sales.
+9. **plan.md rounds 3-5** are still open, plus S3 (SheetJS upgrade) and S7 (CSP).
 
 ## How to continue
 - Read `CLAUDE.md` first: always answer the user in Hebrew.

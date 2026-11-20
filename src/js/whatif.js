@@ -1,9 +1,11 @@
 /*
  * "What if" stock chart, shown inside a lot's calculation panel.
  *
- * The chart draws the stock's daily closes and three movable points: the start
- * of the ESPP offering period (lookback), the purchase / vest date, and the
- * sale date. Each point can be dragged (mouse / touch), moved with the arrow
+ * The chart draws the stock's daily closes and movable points: the start of
+ * the ESPP offering period (lookback), the purchase / vest date, and the sale
+ * date. For an RSU on the section 102 track the vest date changes nothing, so
+ * the grant date is the movable point instead (it sets the 30-day average and
+ * the start of the 24 months). Each point can be dragged (mouse / touch), moved with the arrow
  * keys, or set with a date field. A comparison table shows the actual result
  * next to the "what if" result; a moved sale is priced at that day's low and
  * high. "חזרה לנתונים האמיתיים" puts the points back.
@@ -20,6 +22,7 @@
 
   const POINTS = {
     offer: { label: 'תחילת התקופה', aria: 'תחילת תקופת ההצעה (Lookback)', cls: 'offer' },
+    grant: { label: 'הענקה', aria: 'תאריך ההענקה (ממוצע 30 הימים ותחילת 24 החודשים)', cls: 'offer' },
     buy: { label: 'רכישה', aria: 'תאריך הרכישה', cls: 'buy' },
     sale: { label: 'מכירה', aria: 'תאריך המכירה', cls: 'sale' },
   };
@@ -29,11 +32,13 @@
     const prices = App.PRICES[lot.symbol];
     if (!prices || !lot.dateAcquired || !lot.dateSold) { el.innerHTML = ''; return; }
     const isEspp = lot.planType === 'ESPP';
-    const actual = { offerStart: isEspp ? Core.offeringStart(lot) : '', buyDate: lot.dateAcquired, saleDate: lot.dateSold };
+    const isGrant = lot.planType === 'RSU' && is102 && !!lot.grantDate;
+    const actual = { offerStart: isEspp ? Core.offeringStart(lot) : '', buyDate: lot.dateAcquired, saleDate: lot.dateSold, grantDate: isGrant ? lot.grantDate : '' };
     let st = { ...actual, ...(state || {}) };
-    const keys = isEspp ? ['offer', 'buy', 'sale'] : ['buy', 'sale'];
-    const field = { offer: 'offerStart', buy: 'buyDate', sale: 'saleDate' };
-    if (lot.planType === 'RSU') POINTS.buy.label = 'הבשלה'; else POINTS.buy.label = 'רכישה';
+    const keys = isEspp ? ['offer', 'buy', 'sale'] : isGrant ? ['grant', 'sale'] : ['buy', 'sale'];
+    const field = { offer: 'offerStart', grant: 'grantDate', buy: 'buyDate', sale: 'saleDate' };
+    const rsuVest = lot.planType === 'RSU' ? { label: 'הבשלה', aria: 'תאריך ההבשלה' } : null;
+    const P = k => (k === 'buy' && rsuVest ? { ...POINTS.buy, ...rsuVest } : POINTS[k]);
 
     // Trading days in view: from 3 months before the earliest point to the last price we have.
     const all = Object.keys(prices.rates).sort();
@@ -44,11 +49,14 @@
     const idxOf = iso => { let lo = 0, hi = days.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (days[m] <= iso) lo = m; else hi = m - 1; } return lo; };
     const snap = iso => days[idxOf(iso)];
     for (const k of keys) st[field[k]] = snap(st[field[k]]);
+    // A point on its actual (snapped) day stands for the actual date, even when that was not a trading day.
+    const isActual = k => !keys.includes(k) || st[field[k]] === snap(actual[field[k]]);
+    const scenario = () => ({ ...st, ...Object.fromEntries(keys.filter(isActual).map(k => [field[k], actual[field[k]]])) });
 
     el.innerHTML = `
       <div class="wi-chart" dir="ltr"></div>
       <div class="grid wi-dates">
-        ${keys.map(k => `<div class="field"><label for="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}"><i class="sw wi-${POINTS[k].cls}"></i> ${POINTS[k].aria}</label>
+        ${keys.map(k => `<div class="field"><label for="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}"><i class="sw wi-${P(k).cls}"></i> ${P(k).aria}</label>
           <input id="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}" type="date" data-wi-key="${k}" min="${days[0]}" max="${days[days.length - 1]}"></div>`).join('')}
       </div>
       <p class="hint">גוררים נקודה בגרף, מזיזים אותה עם החצים במקלדת (יום) או עם PageUp ו‑PageDown (חודש), או בוחרים תאריך.</p>
@@ -61,11 +69,15 @@
     function clamp(k, iso) {
       iso = snap(iso);
       if (k === 'offer' && iso > st.buyDate) iso = st.buyDate;
+      if (k === 'grant') {
+        const max = st.saleDate < lot.dateAcquired ? st.saleDate : lot.dateAcquired; // not after the vest or the sale
+        if (iso > max) iso = snap(max);
+      }
       if (k === 'buy') {
         if (isEspp && iso < st.offerStart) iso = st.offerStart;
         if (iso > st.saleDate) iso = st.saleDate;
       }
-      if (k === 'sale' && iso < st.buyDate) iso = st.buyDate;
+      if (k === 'sale' && iso < st.buyDate) iso = snap(st.buyDate);
       return iso;
     }
 
@@ -73,8 +85,7 @@
       const v = clamp(k, iso);
       if (st[field[k]] === v) return;
       st[field[k]] = v;
-      const same = keys.every(kk => st[field[kk]] === actual[field[kk]]);
-      onState(same ? null : { ...st });
+      onState(keys.every(isActual) ? null : { ...st });
       draw();
       table();
     }
@@ -102,7 +113,7 @@
       }
       const tickLabel = d => (step >= 12 ? String(d.getUTCFullYear()) : `${d.getUTCMonth() + 1}/${String(d.getUTCFullYear()).slice(2)}`);
       const pt = k => { const iso = st[field[k]]; return { iso, x: xOf(iso), y: yOf(prices.rates[iso]) }; };
-      const ghost = k => { const iso = snap(actual[field[k]]); return iso === st[field[k]] ? '' : `<circle class="wi-ghost wi-${POINTS[k].cls}" cx="${xOf(iso).toFixed(1)}" cy="${yOf(prices.rates[iso]).toFixed(1)}" r="6"/>`; };
+      const ghost = k => { const iso = snap(actual[field[k]]); return iso === st[field[k]] ? '' : `<circle class="wi-ghost wi-${P(k).cls}" cx="${xOf(iso).toFixed(1)}" cy="${yOf(prices.rates[iso]).toFixed(1)}" r="6"/>`; };
       const sale = pt('sale');
       const lo = prices.low && prices.low[sale.iso], hi = prices.high && prices.high[sale.iso];
       const range = lo && hi ? `<line class="wi-range" x1="${sale.x.toFixed(1)}" x2="${sale.x.toFixed(1)}" y1="${yOf(hi).toFixed(1)}" y2="${yOf(lo).toFixed(1)}"/>` : '';
@@ -110,11 +121,11 @@
         const p = pt(k);
         const val = k === 'sale' && lo && hi ? `${D(p.iso)}, ${lo}–${hi} $` : `${D(p.iso)}, ${prices.rates[p.iso]} $`;
         const labelY = p.y < M.t + 28 ? p.y + 24 : p.y - 14;
-        return `<g class="wi-handle wi-${POINTS[k].cls}" data-key="${k}" tabindex="0" role="slider" aria-label="${POINTS[k].aria}"
+        return `<g class="wi-handle wi-${P(k).cls}" data-key="${k}" tabindex="0" role="slider" aria-label="${P(k).aria}"
             aria-valuemin="0" aria-valuemax="${days.length - 1}" aria-valuenow="${idxOf(p.iso)}" aria-valuetext="${val}">
           <circle class="hit" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="22"/>
           <circle class="dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7"/>
-          <text x="${p.x.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle">${POINTS[k].label}</text>
+          <text x="${p.x.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle">${P(k).label}</text>
         </g>`;
       };
       lastW = W;
@@ -136,14 +147,15 @@
     function table() {
       const ctx = { rates: App.RATES, prices: App.PRICES, is102, settings: App.profile };
       const real = Core.evaluateLot(lot, ctx);
-      const { variants } = Core.whatIfLots(lot, st, App.PRICES);
+      const { variants } = Core.whatIfLots(lot, scenario(), App.PRICES);
       const cols = [{ label: 'בפועל', r: real }].concat(variants.map(v => ({ label: `מה אם · ${v.label}`, r: Core.evaluateLot(v.lot, ctx) })));
       if (!real.ok) { compare.innerHTML = ''; return; }
       const money = v => (isFinite(v) ? App.usd(v) : '—');
       const shek = v => (isFinite(v) ? App.fmt(v) : '—');
       const rows = [
         isEspp ? ['מחיר רכישה למניה $', c => money(c.r.paidPerShare)] : null,
-        [lot.planType === 'RSU' ? 'שווי ביום ההבשלה למניה $' : 'שווי ביום הרכישה למניה $', c => money(c.r.fmvPerShare)],
+        is102 ? [lot.planType === 'RSU' ? 'שווי ההטבה למניה $ (ממוצע 30 יום)' : 'שווי ההטבה למניה $', c => money(c.r.benefitPerShare)]
+          : [lot.planType === 'RSU' ? 'שווי ביום ההבשלה למניה $' : 'שווי ביום הרכישה למניה $', c => money(c.r.fmvPerShare)],
         ['מחיר מכירה למניה $', c => money(c.r.salePerShare)],
         ['שער מכירה', c => (c.r.calc.sell ? c.r.calc.sell.rate : '—')],
         ['תמורה ₪', c => shek(c.r.calc.proceedsIls)],
@@ -151,15 +163,16 @@
         [is102 ? 'מס שולי משוער ₪' : 'מס במשכורת, משוער ₪', c => shek(c.r.workTax)],
         ['רווח ריאלי ₪', c => shek(c.r.calc.real)],
         ['מס רווח הון ₪', c => shek(c.r.calc.tax)],
-        ['נשאר ביד ₪', c => shek(c.r.net), 'total'],
+        ['מזומן אחרי מס ₪', c => shek(c.r.cash)],
+        ['רווח נקי ₪', c => shek(c.r.net), 'total'],
       ].filter(Boolean);
-      const diff = variants.length ? `<tr class="diff"><th scope="row">הפרש מהמציאות ₪</th><td></td>${cols.slice(1).map(c => `<td class="num ${c.r.ok && c.r.net - real.net > 0 ? 'gain' : c.r.ok && c.r.net - real.net < 0 ? 'loss' : ''}">${c.r.ok ? App.signed(c.r.net - real.net) : '—'}</td>`).join('')}</tr>` : '';
+      const diff = variants.length ? `<tr class="diff"><th scope="row">הפרש ברווח הנקי ₪</th><td></td>${cols.slice(1).map(c => `<td class="num ${c.r.ok && c.r.net - real.net > 0 ? 'gain' : c.r.ok && c.r.net - real.net < 0 ? 'loss' : ''}">${c.r.ok ? App.signed(c.r.net - real.net) : '—'}</td>`).join('')}</tr>` : '';
       compare.innerHTML = `<div class="table-scroll"><table class="mini-table wi-table">
           <thead><tr><th scope="col"></th>${cols.map(c => `<th scope="col">${c.label}</th>`).join('')}</tr></thead>
           <tbody>${rows.map(([label, f, cls]) => `<tr class="${cls || ''}"><th scope="row">${label}</th>${cols.map(c => `<td class="num">${c.r.ok ? f(c) : '—'}</td>`).join('')}</tr>`).join('')}${diff}</tbody>
         </table></div>
         <p class="hint">${variants.length
-          ? `${variants.some(v => v.key === 'low') ? `המכירה הוזזה ל‑${D(st.saleDate)}: מוצג טווח המחירים של אותו יום, מהנמוך לגבוה. ` : ''}${variants.some(v => v.key !== 'what') && !(st.buyDate !== actual.buyDate || st.offerStart !== actual.offerStart) ? '' : 'רכישה שהוזזה מתומחרת לפי מחירי הסגירה: השווי לפי הסגירה ביום הרכישה, ומחיר הרכישה לפי 85% מהנמוך בין תחילת התקופה ליום הרכישה (Lookback). '}השערים היציגים מתעדכנים לפי התאריכים. המס השולי לפי השיעור שהגדרת.`
+          ? `${variants.some(v => v.key === 'low') ? `המכירה הוזזה ל‑${D(st.saleDate)}: מוצג טווח המחירים של אותו יום, מהנמוך לגבוה. ` : ''}${isGrant && !isActual('grant') ? `ההענקה הוזזה ל‑${D(st.grantDate)}: ממוצע 30 הימים מחושב מחדש, וגם מועד תום 24 החודשים זז. ` : ''}${isActual('buy') && isActual('offer') ? '' : 'רכישה שהוזזה מתומחרת לפי מחירי הסגירה: השווי לפי הסגירה ביום הרכישה, ומחיר הרכישה לפי 85% מהנמוך בין תחילת התקופה ליום הרכישה (Lookback). '}השערים היציגים מתעדכנים לפי התאריכים. המס השולי לפי השיעור שהגדרת.`
           : `הנקודות במקומות האמיתיים. ${isEspp ? `תחילת התקופה: ${D(st.offerStart)}${lot.offerStart ? '' : ' (הנחה: חצי שנה לפני הרכישה)'}. ` : ''}מחירי הסגירה של ${App.esc(lot.symbol)} מ‑Yahoo Finance.`}</p>`;
     }
 

@@ -152,6 +152,11 @@
     <section class="card" id="summary-card" aria-labelledby="sum-title">
       <h2 id="sum-title"><span class="step">3</span> סיכום וקיזוז הפסדים</h2>
       <div id="summary" class="summary"></div>
+      <div class="field prior-loss">
+        <label for="p-prior-loss">הפסד הון מועבר משנים קודמות (₪) <small>(לא חובה)</small></label>
+        <input id="p-prior-loss" type="number" inputmode="decimal" step="1" min="0" aria-describedby="p-prior-loss-note">
+        <p class="hint" id="p-prior-loss-note">הפסד שלא קוזז בשנים שאינן ברשימה, כפי שמופיע בדוח השנתי האחרון. הכלי מקזז אותו מהרווחים של השנה הראשונה ברשימה, והפסד של שנה ברשימה עובר לשנה שאחריה.</p>
+      </div>
       <div class="actions"><button type="button" class="btn btn-quiet" id="go-explain">איך מחושב המס? מעבר להסבר המלא</button></div>
     </section>
 
@@ -416,7 +421,7 @@
             <p class="field-error" id="e-grantDate"></p>
           </div>
           <div class="field" id="w-avg30" hidden>
-            <label for="f-avg30">ממוצע 30 ימי מסחר לפני ההענקה ($ למניה) <small>(לא חובה)</small></label>
+            <label for="f-avg30" id="l-avg30">ממוצע 30 ימי מסחר לפני ההענקה ($ למניה) <small>(לא חובה)</small></label>
             <input id="f-avg30" name="avg30" type="number" inputmode="decimal" step="0.0001" min="0">
             <p class="field-note" id="f-avg30-note"></p>
           </div>
@@ -452,8 +457,12 @@
             <label for="f-paidUsd">סכום ששילמת ($) <small>(לא חובה) · Acquisition Cost, מחיר הרכישה המוזל × כמות</small></label>
             <input id="f-paidUsd" name="paidUsd" type="number" inputmode="decimal" step="0.01" min="0">
           </div>
+          <div class="field" id="w-withheldCapIls" hidden>
+            <label for="f-withheldCapIls">מס רווח הון שהנאמן ניכה (₪) <small>(לא חובה) · מדוח הנאמן</small></label>
+            <input id="f-withheldCapIls" name="withheldCapIls" type="number" inputmode="decimal" step="1" min="0">
+          </div>
           <div class="field" id="w-withheldIls" hidden>
-            <label for="f-withheldIls">מס שהנאמן ניכה (₪) <small>(לא חובה) · להשוואה</small></label>
+            <label for="f-withheldIls">מס על הכנסת העבודה שהנאמן ניכה (₪) <small>(לא חובה) · מדוח הנאמן</small></label>
             <input id="f-withheldIls" name="withheldIls" type="number" inputmode="decimal" step="1" min="0">
           </div>
           <div class="field">

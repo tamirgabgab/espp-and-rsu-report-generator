@@ -183,7 +183,7 @@
       d.fit(fmt(calc.real), 142, 216, F.line27.y, 11, 'center');
       d.fit(`${fmt(calc.real)}*25%=${fmt(calc.tax)}`, 141, 233, F.line33.y, 11, 'center');
     }
-    d.right(Core.formatDateIL(profile.signDate || new Date().toISOString().slice(0, 10)), F.signDate.xRight, F.signDate.y, 12);
+    d.right(Core.formatDateIL(profile.signDate || Core.localISO()), F.signDate.xRight, F.signDate.y, 12);
   }
 
   // ------------------------------------------------------------- summary pages
@@ -244,28 +244,35 @@
       y += rowH;
     });
 
-    // Totals by half-year and year.
+    // Totals by half-year and year, with the loss carried in from earlier periods.
     y += 14;
     if (y > H - M - 120) ctx = newPage('נספח לטופס 1399 - סיכום');
-    ctx.T('סיכום לפי תקופה (קיזוז הפסדים מול רווחים באותה תקופה)', xRight0, y, 11);
+    ctx.T('סיכום לפי תקופה (קיזוז הפסדים באותה תקופה ומתקופות קודמות)', xRight0, y, 11);
     y += 12;
+    const withheld = summary.some(g => g.withheldCap > 0);
     const sCols = [
-      { h: 'תקופה', w: 110, v: g => g.label },
+      { h: 'תקופה', w: 100, v: g => g.label },
       { h: 'מכירות', w: 50, v: g => String(g.count) },
-      { h: 'תמורה ₪', w: 80, v: g => fmt(g.proceedsIls) },
-      { h: 'סכום אינפלציוני ₪', w: 90, v: g => fmt(g.inflationary) },
-      { h: 'רווחים ריאליים ₪', w: 90, v: g => fmt(g.gains) },
-      { h: 'הפסדים לקיזוז ₪', w: 90, v: g => fmt(g.losses) },
-      { h: 'רווח ריאלי נטו ₪', w: 90, v: g => fmt(g.net) },
+      { h: 'תמורה ₪', w: 70, v: g => fmt(g.proceedsIls) },
+      { h: 'סכום אינפלציוני ₪', w: 80, v: g => fmt(g.inflationary) },
+      { h: 'רווחים ריאליים ₪', w: 80, v: g => fmt(g.gains) },
+      { h: 'הפסדים לקיזוז ₪', w: 80, v: g => fmt(g.losses) },
+      { h: 'רווח ריאלי נטו ₪', w: 80, v: g => fmt(g.net) },
+      { h: 'הפסד מועבר ₪', w: 80, v: g => (g.carryIn < 0 ? fmt(g.carryIn) : '') },
       { h: 'מס 25% ₪', w: 80, v: g => fmt(g.tax) },
+      ...(withheld ? [{ h: 'נוכה ע"י הנאמן ₪', w: 80, v: g => (g.withheldCap > 0 ? fmt(g.withheldCap) : '') }] : []),
     ];
     const sW = sCols.reduce((a, c) => a + c.w, 0);
-    let x = xRight0;
-    page.drawRectangle({ x: x - sW, y: H - y - 10, width: sW, height: rowH, color: band });
-    for (const c of sCols) { ctx.T(c.h, x - c.w / 2, y + 6, size + 0.4, ink, 'center'); x -= c.w; }
-    y += rowH;
+    const sumHeader = () => {
+      let x = xRight0;
+      page.drawRectangle({ x: x - sW, y: H - y - 10, width: sW, height: rowH, color: band });
+      for (const c of sCols) { ctx.T(c.h, x - c.w / 2, y + 6, size + 0.4, ink, 'center'); x -= c.w; }
+      y += rowH;
+    };
+    sumHeader();
     for (const g of summary) {
-      x = xRight0;
+      if (y > H - M - 30) { ctx = newPage('נספח לטופס 1399 - סיכום, המשך'); sumHeader(); }
+      let x = xRight0;
       if (g.isYear) page.drawRectangle({ x: x - sW, y: H - y - 10, width: sW, height: rowH, color: rgb(0.97, 0.97, 0.94) });
       for (const c of sCols) { ctx.T(c.v(g), x - c.w / 2, y + 6, size + 0.4, ink, 'center'); x -= c.w; }
       y += rowH;
@@ -275,10 +282,16 @@
       'הערות:',
       '‏1. תמורה ועלות הומרו לשקלים לפי השער היציג ביום המכירה וביום הרכישה; ביום ללא פרסום נלקח השער האחרון שפורסם לפניו.',
       '‏2. סכום אינפלציוני = עלות בשקלים × (שער מכירה / שער רכישה − 1). כשהשקל התחזק - אין סכום אינפלציוני, וכל הרווח הנומינלי ריאלי.',
-      '‏3. הפסד שנובע מהתחזקות השקל אינו בר קיזוז (הלכת מוזס); מוצג רק החלק המותר בקיזוז.',
+      '‏3. הפסד שנובע מהתחזקות השקל אינו בר קיזוז (הלכת מוזס); מוצג רק החלק המותר בקיזוז. הפסד נטו של שנה מועבר לשנים הבאות, והפסד של ינואר-יוני מקטין את המקדמה של יולי-דצמבר.',
       '‏4. עלות = Adjusted Cost Basis לפי E*Trade (שווי ביום הרכישה/ההבשלה). המס הוא הערכה בלבד - יש לאמת מול רואה החשבון.',
     ];
-    for (const n of notes) { ctx.T(n, xRight0, y, 7.8, muted); y += 11; }
+    if (items.some(it => it.calc.track === '102')) {
+      notes.push('‏5. סעיף 102 (מסלול רווח הון עם נאמן): העלות = הסכום ששולם ועוד חלק ההטבה שמוסה כהכנסת עבודה, ותאריך הרכישה הוא יום ההקצאה לנאמן. הכנסת העבודה אינה בטופס.');
+    }
+    for (const n of notes) {
+      if (y > H - M - 10) ctx = newPage('נספח לטופס 1399 - הערות');
+      ctx.T(n, xRight0, y, 7.8, muted); y += 11;
+    }
   }
 
   /**
@@ -306,9 +319,11 @@
    *  profile:   {name, idNumber, belonging, sec102, place, signDate}
    *  items:     [{lot, calc}] - only items with calc.ok are rendered
    *  includeSummary: boolean
+   *  summary:   period totals (Core.summarize) with the loss carried from earlier years;
+   *             computed from the items when not given
    * @returns {Promise<Uint8Array>}
    */
-  async function buildPdf({ formBytes, fontBytes, profile, items, includeSummary = true }) {
+  async function buildPdf({ formBytes, fontBytes, profile, items, includeSummary = true, summary = null }) {
     const { PDFLib, fontkit, Core } = getLibs();
     const { PDFDocument, rgb } = PDFLib;
     const out = await PDFDocument.create();
@@ -322,7 +337,7 @@
       fillFormPage(page, font, rgb, Core, profile, item);
     }
     if (includeSummary && ready.length) {
-      drawSummary(out, font, rgb, Core, profile, ready, Core.summarize(ready));
+      drawSummary(out, font, rgb, Core, profile, ready, summary || Core.summarize(ready));
     }
     out.setTitle('Form 1399 - capital gains report');
     out.setCreator('espp-and-rsu-report-generator');

@@ -142,8 +142,8 @@
     const realCls = c.real > 0 ? 'gain' : c.real < 0 ? 'loss' : '';
     let later = '';
     if (r.later && r.later.ok) {
-      const gain = r.later.net - n.net;
-      later = `<p class="sim-later">${gain > 0 ? `אם תחכה עד ${D(c.unlock)} (תום 24 החודשים), באותו מחיר ובאותו שער, יישאר לך <b>${App.ils(r.later.net)}</b>, כלומר <b>${App.ils(gain)}</b> יותר.` : `גם אחרי ${D(c.unlock)} התוצאה לא משתפרת באותו מחיר.`} החיסכון בא מכך שרק ההטבה תמוסה במס שולי, והשאר ב‑25%.</p>`;
+      const gain = r.later.cash - n.cash;
+      later = `<p class="sim-later">${gain > 0 ? `אם תחכה עד ${D(c.unlock)} (תום 24 החודשים), באותו מחיר ובאותו שער, יישארו לך <b>${App.ils(r.later.cash)}</b> במזומן אחרי מס, כלומר <b>${App.ils(gain)}</b> יותר.` : `גם אחרי ${D(c.unlock)} התוצאה לא משתפרת באותו מחיר.`} החיסכון בא מכך שרק ההטבה תמוסה במס שולי, והשאר ב‑25%.</p>`;
     }
     const note = c.early ? `<p class="case">${App.esc(Core.SCENARIO_TEXT['early-102'])}</p>`
       : c.baseSource === 'avg30' ? `<p class="hint">שווי ההטבה ב‑RSU: ממוצע הסגירה <bdi class="ltr">${c.avg.avg} $</bdi> ב‑30 ימי המסחר שלפני ההענקה, מ‑${D(c.avg.from)} עד ${D(c.avg.to)}.</p>`
@@ -155,7 +155,8 @@
         ${r.o.is102 ? metric('מס שולי משוער', App.ils(n.workTax)) : ''}
         ${c.early ? '' : metric('רווח הון ריאלי', App.ils(c.real), realCls)}
         ${c.early ? '' : metric('מס רווח הון 25%', App.ils(n.capTax))}
-        ${metric('נשאר ביד', App.ils(n.net), 'sim-net')}
+        ${metric('מזומן אחרי מס', App.ils(n.cash), 'sim-net')}
+        ${metric('רווח נקי', App.ils(n.net), n.net > 0 ? 'gain' : n.net < 0 ? 'loss' : '')}
       </div>
       ${note}${later}
     </article>`;
@@ -169,28 +170,33 @@
     const year = (state.date || App.today()).slice(0, 4);
     const realized = App.realizedByYear(year);
     const realizedNet = realized.gains + realized.losses;
+    const base = realizedNet + realized.carryIn; // the year's sales so far, after the loss carried from earlier years
     const simReal = ok.reduce((a, x) => a + (x.r.now.calc.early ? 0 : x.r.now.calc.real), 0);
-    const taxBefore = Core.roundILS(Math.max(0, realizedNet) * Core.TAX_RATE);
-    const taxAfter = Core.roundILS(Math.max(0, realizedNet + simReal) * Core.TAX_RATE);
+    const taxBefore = Core.roundILS(Math.max(0, base) * Core.TAX_RATE);
+    const taxAfter = Core.roundILS(Math.max(0, base + simReal) * Core.TAX_RATE);
     const capTax = taxAfter - taxBefore;
-    const proceeds = ok.reduce((a, x) => a + x.r.now.proceedsIls, 0);
-    const workTax = ok.reduce((a, x) => a + x.r.now.workTax, 0);
+    const sum = k => ok.reduce((a, x) => a + (x.r.now[k] || 0), 0);
+    const proceeds = sum('proceedsIls');
+    const workTax = sum('workTax');
     const workIls = ok.reduce((a, x) => a + (x.r.now.calc.workIls || 0), 0);
-    const net = proceeds - workTax - capTax;
-    const waitGain = ok.reduce((a, x) => a + (x.r.later && x.r.later.ok ? Math.max(0, x.r.later.net - x.r.now.net) : 0), 0);
+    const cash = proceeds - workTax - capTax; // same definition as Core.evaluateLot, with the offset capital tax
+    const profit = cash - sum('paidIls') - sum('payrollTax');
+    const waitGain = ok.reduce((a, x) => a + (x.r.later && x.r.later.ok ? Math.max(0, x.r.later.cash - x.r.now.cash) : 0), 0);
+    const carried = realized.carryIn < 0 ? ` ומול הפסד מועבר של ${App.ils(-realized.carryIn)}` : '';
     const offsetNote = realized.count
-      ? `מס רווח ההון מחושב אחרי קיזוז מול ${realized.count === 1 ? 'מכירה אחת' : `${realized.count} מכירות`} שכבר נמצאות בדוח של ${year} (רווח ריאלי נטו ${App.ils(realizedNet)}). זו התוספת למס של השנה.`
-      : `אין בדוח מכירות של ${year}, ולכן אין קיזוז מול מכירות קודמות.`;
+      ? `מס רווח ההון מחושב אחרי קיזוז מול ${realized.count === 1 ? 'מכירה אחת' : `${realized.count} מכירות`} שכבר נמצאות בדוח של ${year} (רווח ריאלי נטו ${App.ils(realizedNet)})${carried}. זו התוספת למס של השנה.`
+      : realized.carryIn < 0 ? `אין בדוח מכירות של ${year}. מס רווח ההון מחושב אחרי קיזוז הפסד מועבר של ${App.ils(-realized.carryIn)}.`
+        : `אין בדוח מכירות של ${year}, ולכן אין קיזוז מול מכירות קודמות.`;
     out.innerHTML = `
       <div class="hero sim-hero">
         <div class="tile"><div class="tile-label">תמורה</div><div class="tile-value">${App.ils(proceeds)}</div><div class="tile-sub">${ok.length === 1 ? 'מנה אחת' : `${ok.length} מנות`} · שער ${App.esc(state.rate)}</div></div>
         <div class="tile"><div class="tile-label">מס שולי משוער</div><div class="tile-value">${App.ils(workTax)}</div><div class="tile-sub">על הכנסת עבודה ${App.ils(workIls)} (102)</div></div>
         <div class="tile"><div class="tile-label">מס רווח הון</div><div class="tile-value">${App.ils(capTax)}</div><div class="tile-sub">25%, אחרי קיזוז בשנת ${year}</div></div>
-        <div class="tile tile-accent"><div class="tile-label">נשאר ביד</div><div class="tile-value">${App.ils(net)}</div><div class="tile-sub">${waitGain > 0 ? `המתנה לתום 24 החודשים חוסכת כ‑${App.ils(waitGain)}` : 'לפני מס יסף, אם חל'}</div></div>
+        <div class="tile tile-accent"><div class="tile-label">מזומן אחרי מס</div><div class="tile-value">${App.ils(cash)}</div><div class="tile-sub">רווח נקי ${App.ils(profit)}${waitGain > 0 ? `. המתנה לתום 24 החודשים חוסכת כ‑${App.ils(waitGain)}` : ''}</div></div>
       </div>
       <p class="hint">${offsetNote}</p>
       <div class="sim-cards">${results.map(x => resultCard(x.h, x.r)).join('')}</div>
-      <p class="hint">הערכה בלבד: המחיר והשער ביום המכירה עוד לא ידועים, המס השולי הוא השיעור שהגדרת, ומס יסף לא חושב. במסלול 102 הנאמן מנכה את המס בפועל במכירה.</p>`;
+      <p class="hint">מזומן אחרי מס: התמורה פחות המס שיורד מהמכירה. רווח נקי: המזומן פחות מה ששילמת על המניות ופחות מס במשכורת שכבר שולם. הערכה בלבד: המחיר והשער ביום המכירה עוד לא ידועים, המס השולי הוא השיעור שהגדרת, ומס יסף לא חושב. במסלול 102 הנאמן מנכה את המס בפועל במכירה.</p>`;
   }
 
   function render() {

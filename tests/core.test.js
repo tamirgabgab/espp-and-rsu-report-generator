@@ -437,3 +437,118 @@ test('importing the same lots twice adds nothing the second time', () => {
   assert.equal(second.added, 0);
   assert.equal(second.skipped, 1);
 });
+
+// ---------------------------------------------------------------- round 2 (tax logic)
+
+const sItem = (dateSold, real, lot = {}) => ({
+  lot: { dateSold, ...lot },
+  calc: { ok: true, real, proceedsIls: 0, costIls: 0, feesIls: 0, nominal: real, inflationary: 0, workIls: 0, noForm: false },
+});
+const byKey = groups => Object.fromEntries(groups.map(g => [g.key, g]));
+
+test('summary: a year loss carries into the next year (L1)', () => {
+  const g = byKey(Core.summarize([sItem('2025-03-10', -14512), sItem('2026-03-10', 11820)]));
+  assert.equal(g['2025'].carryLoss, -14512);
+  assert.equal(g['2026'].carryIn, -14512);
+  assert.equal(g['2026'].taxable, 0);
+  assert.equal(g['2026'].tax, 0);
+  assert.equal(g['2026'].carryLoss, -2692);
+  assert.equal(g['2026'].net, 11820); // the year's own result stays visible
+});
+
+test('summary: a loss typed for earlier years applies to the first year only once (L1)', () => {
+  const g = byKey(Core.summarize([sItem('2025-03-10', 1000), sItem('2026-03-10', 1000)], { priorLoss: 1500 }));
+  assert.equal(g['2025'].carryIn, -1500);
+  assert.equal(g['2025'].tax, 0);
+  assert.equal(g['2026'].carryIn, -500);
+  assert.equal(g['2026'].taxable, 500);
+  assert.equal(g['2026'].tax, 125);
+  assert.equal(byKey(Core.summarize([sItem('2025-03-10', 1000)], { priorLoss: -5 }))['2025'].carryIn, 0);
+});
+
+test('summary: a January-June loss reduces the July-December advance (L7)', () => {
+  const g = byKey(Core.summarize([sItem('2026-03-10', -400), sItem('2026-09-10', 1000)]));
+  assert.equal(g['2026-H1'].tax, 0);
+  assert.equal(g['2026-H2'].carryIn, -400);
+  assert.equal(g['2026-H2'].tax, 150);
+  assert.equal(g['2026'].tax, 150);
+  // A gain in the first half and a loss in the second: the first advance stands, the year is lower.
+  const h = byKey(Core.summarize([sItem('2026-03-10', 1000), sItem('2026-09-10', -400)]));
+  assert.equal(h['2026-H1'].tax, 250);
+  assert.equal(h['2026-H2'].carryIn, 0);
+  assert.equal(h['2026'].tax, 150);
+});
+
+test('summary: tax withheld by the trustee reduces what is due (L4)', () => {
+  const g = byKey(Core.summarize([sItem('2026-03-10', 1000, { withheldCapIls: 200, withheldIls: 300 }), sItem('2026-04-10', 0)]));
+  assert.equal(g['2026-H1'].tax, 250);
+  assert.equal(g['2026-H1'].withheldCap, 200);
+  assert.equal(g['2026-H1'].due, 50);
+  assert.equal(g['2026-H1'].withheldWork, 300);
+});
+
+test('what if: fees are deducted once, and the sale price per share is the price (L2)', () => {
+  const lot = { ...wlot, feesUsd: 50 };
+  const s = Core.whatIfLots(lot, { offerStart: '2023-07-31', buyDate: '2024-01-31', saleDate: '2026-05-12' }, P);
+  assert.equal(s.variants[0].lot.proceedsUsd, 2050); // 205 x 10, fees stay in feesUsd
+  const ctx = { rates: R2, prices: P, is102: false, settings: { marginalRate: 50, includeNi: false } };
+  const e = Core.evaluateLot(lot, ctx);
+  assert.equal(e.salePerShare, 200);
+  assert.equal(e.calc.feesIls, Core.roundILS(50 * 2.909));
+  // The same date "moved" to itself gives the same net as the actual lot.
+  const same = Core.evaluateLot({ ...lot, proceedsUsd: Core.round2(200 * 10) }, ctx);
+  assert.equal(same.net, e.net);
+});
+
+test('net amounts: cash after tax and net profit have one definition (L3)', () => {
+  const s102 = { rates: R2, prices: P, is102: true, settings: { marginalRate: 50, includeNi: false } };
+  const a = Core.evaluateLot(wlot, s102);
+  assert.equal(a.cash, a.calc.proceedsIls - a.calc.feesIls - a.calc.tax - a.workTax); // the trustee takes the work tax at the sale
+  assert.equal(a.net, a.cash - a.paidIls);
+  const b = Core.evaluateLot(wlot, { ...s102, is102: false });
+  assert.equal(b.payroll, true);
+  assert.equal(b.cash, b.calc.proceedsIls - b.calc.feesIls - b.calc.tax); // payroll tax was paid before the sale
+  assert.equal(b.net, b.cash - b.paidIls - b.workTax);
+  // The simulator uses the same numbers.
+  const h = { symbol: 'X', planType: 'ESPP', qty: 10, dateAcquired: '2024-01-31', costPerShare: 120, paidPerShare: 85 };
+  const sim = Core.simulateHolding(h, { qty: 10, price: 200, date: '2026-05-11', rate: 2.909, is102: true, rates: R2, prices: P, settings: s102.settings });
+  assert.equal(sim.now.cash, sim.now.proceedsIls - sim.now.workTax - sim.now.capTax);
+  assert.equal(sim.now.net, sim.now.cash - sim.now.paidIls);
+});
+
+test('ESPP under 102: a benefit value from the trustee replaces the purchase-date price (L5)', () => {
+  const espp = { symbol: 'QCOM', planType: 'ESPP', qty: 10, dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 2000, costUsd: 1200, paidUsd: 850, feesUsd: 0 };
+  const auto = Core.computeLot102(espp, rates102);
+  assert.equal(auto.baseSource, 'cost');
+  assert.equal(auto.workUsd, 350);
+  const manual = Core.computeLot102({ ...espp, avg30: '110' }, rates102);
+  assert.equal(manual.baseSource, 'manual');
+  assert.equal(manual.workUsd, 250);
+  assert.equal(manual.capCostUsd, 1100);
+});
+
+test('default work-tax settings: 35% plus 12% (L6)', () => {
+  assert.deepEqual(Core.WORK_DEFAULTS, { marginalRate: 35, niRate: 12, includeNi: true });
+  assert.equal(Core.workTax(1000), 470);
+});
+
+test('dates: local today, and dots are day-first (L8, L15)', () => {
+  assert.equal(Core.localISO(new Date(2026, 0, 2, 0, 30)), '2026-01-02');
+  assert.equal(Core.parseDate('11.5.2026'), '2026-05-11');
+  assert.equal(Core.parseDate('05/11/2026'), '2026-05-11'); // E*Trade: month first
+  assert.equal(Core.parseDate('11/5/2026', { usFormat: false }), '2026-05-11');
+  assert.equal(Core.parseDate('11.5/2026'), null); // mixed separators are not a date
+});
+
+test('what if: moving an RSU grant moves the 30-day average (L12)', () => {
+  const closes = {};
+  for (let i = 0; i < 120; i++) closes[Core.addDays('2023-10-01', i)] = i < 60 ? 50 : 70;
+  const PX = { X: { rates: { ...closes, '2026-05-11': 200 } } };
+  const rsu = { symbol: 'X', planType: 'RSU', qty: 10, grantDate: '2023-11-30', dateAcquired: '2025-03-03', dateSold: '2026-05-11', proceedsUsd: 2000, costUsd: 900, feesUsd: 0, avg30: '' };
+  const s = Core.whatIfLots(rsu, { offerStart: '', buyDate: rsu.dateAcquired, saleDate: rsu.dateSold, grantDate: Core.addDays('2023-10-01', 100) }, PX);
+  assert.equal(s.moved.grant, true);
+  assert.equal(s.variants.length, 1);
+  const ctx = { rates: { ...rates102, [s.variants[0].lot.grantDate]: 3.7 }, prices: PX, is102: true, settings: {} };
+  assert.equal(Core.evaluateLot(s.variants[0].lot, ctx).benefitPerShare, 70);
+  assert.equal(Core.whatIfLots(rsu, { offerStart: '', buyDate: rsu.dateAcquired, saleDate: rsu.dateSold, grantDate: rsu.grantDate }, PX).variants.length, 0);
+});

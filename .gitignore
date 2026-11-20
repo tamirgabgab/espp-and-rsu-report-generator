@@ -7,3 +7,4 @@ G&L_*.csv
 ByBenefitType*.xlsx
 ByStatus*.xlsx
 BenefitHistory*.xlsx
+__pycache__/

@@ -64,7 +64,17 @@ calculated?" panel.
   substantial shareholder, for gains accrued after 1.1.2012.
 - **Loss offset:** losses (negative real results) are offset against gains of
   the same period. The app shows totals per half-year (for the advance
-  payments) and per year. A net yearly loss is shown as a loss to carry forward.
+  payments) and per year.
+- **Loss carry-forward:** a net loss of one year is carried into the next year
+  in the list, and so on. A loss from January–June reduces the July–December
+  advance. A loss from years that are not in the tool can be typed in the
+  summary ("הפסד מועבר משנים קודמות"); it is offset against the first year in
+  the list. Each card shows the carried loss, the taxable amount
+  (`max(net + carry, 0)`) and the loss left to carry on. Confirm the carry with
+  the accountant: it assumes no other capital gains used the loss.
+- **Tax already withheld:** tax the trustee withheld on the capital gain
+  (102 lots) is subtracted from the estimated tax; the card shows what is left
+  to pay or the balance in your favour.
 - **Not calculated:**
   - the surtax: 3% plus another 2% on capital income, above ₪721,560 a year;
   - offsetting losses against dividends or interest;
@@ -101,7 +111,7 @@ withholds it at the sale, and the gain is split in two:
 
 | Symbol | Meaning |
 |---|---|
-| `V` | Value of the benefit. **ESPP:** the market value on the purchase date (Adjusted Cost Basis). **RSU:** the average closing price of the **30 trading days before the grant date** × qty. |
+| `V` | Value of the benefit. **ESPP:** the market value on the purchase date (Adjusted Cost Basis), or the "benefit value per share" from the trustee's report when it is typed in the lot. **RSU:** the average closing price of the **30 trading days before the grant date** × qty. |
 | `Cp` | What you paid. ESPP: the discounted purchase price × qty (E*Trade's *Acquisition Cost*). RSU: 0. |
 | `P`, `F` | Proceeds and fees in USD |
 | `alloc` | The allocation to the trustee: the grant date for RSU, the purchase date for ESPP |
@@ -121,18 +131,27 @@ withholds it at the sale, and the gain is split in two:
 - **Sold below the average:** the work income is capped at the actual gain, so
   the capital part is 0.
 - **Estimated marginal tax:** `W(₪) × (marginal rate + national insurance and
-  health)`, with the rates set in step 4 (default 47% + 12%). This is for
+  health)`, with the rates set in step 4 (default 35% + 12% for new users;
+  a saved profile keeps its own rates). This is for
   control only. Above the national-insurance ceiling the real rate is lower.
-- **Trustee withholding:** enter the tax the trustee withheld, and the "show
-  the calculation" panel compares it with the estimate.
+- **Trustee withholding:** two fields per lot: the tax withheld on the
+  work income and the tax withheld on the capital gain. The capital part is
+  subtracted from the 25% tax in the summary; the work part is compared with
+  the marginal-tax estimate (the panel notes a difference above 5%).
+- **Cash after tax and net profit:** the simulator, the "what if" table and
+  the formulas tab use one definition (`Core.evaluateLot`):
+  `cash = proceeds − fees − capital tax − work tax withheld by the trustee`
+  (in the regular track the work tax was paid through payroll, so it is not
+  subtracted here), and `net profit = cash − amount paid − payroll work tax`.
 
 Open points, which are not settled by an official source:
 - **Real or nominal.** Trustees usually compute the capital part nominally (all
   at the sale-date rate). Some accountants argue for a real computation. The
   app computes it as **real**, by the user's decision.
 - **ESPP work income.** The app uses the discount (`V` = market value on the
-  purchase date). Some plans use a 30-day average instead. You can override the
-  cost and the amount paid per lot.
+  purchase date) unless a "benefit value per share" from the trustee's report is
+  typed in the lot (some plans use a 30-day average). The panel says which rule
+  was used.
 - **24 months:** counted from the allocation date (the grant for RSU, the
   purchase for ESPP). Check your plan's rules.
 
