@@ -17,10 +17,11 @@
    * @param {Object<string, number>} rates  ISO date -> rate
    * @param {{date:string, type:'buy'|'sell', label:string}[]} markers
    * @param {HTMLElement} tooltip
+   * @param {{from?: string}} [opts] first date shown (default: all the data)
    */
-  function renderRateChart(host, rates, markers, tooltip) {
+  function renderRateChart(host, rates, markers, tooltip, { from = '' } = {}) {
     host.innerHTML = '';
-    const dates = Object.keys(rates).filter(d => d >= '2020-01-01').sort();
+    const dates = Object.keys(rates).filter(d => d >= from).sort();
     if (!dates.length) return;
     // Size the viewBox to the real container width so text stays 11px on phones.
     const W = Math.max(300, Math.round(host.clientWidth || 960));
@@ -44,17 +45,19 @@
         t.textContent = v.toFixed(1);
       }
     }
-    // X axis year ticks.
-    const y0 = +dates[0].slice(0, 4), y1 = +dates[dates.length - 1].slice(0, 4);
-    const yearStep = W < 480 ? 2 : 1;
-    for (let yr = y0; yr <= y1; yr++) {
-      const d = `${yr}-01-01`;
-      if ((yr - y0) % yearStep) continue;
-      if (Date.parse(d) < t0) continue;
-      const xx = x(d);
+    // X axis ticks: years for a long range, months (M/YY) for a short one; at most about one per 80 px.
+    const months = (t1 - t0) / (30.44 * 86400000);
+    const maxTicks = Math.max(2, Math.floor((W - m.l - m.r) / 80));
+    const step = [1, 2, 3, 6, 12, 24, 36].find(s => months / s <= maxTicks) || 48;
+    const start = new Date(t0);
+    for (let d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)); d.getTime() <= t1; d.setUTCMonth(d.getUTCMonth() + 1)) {
+      const mIdx = d.getUTCFullYear() * 12 + d.getUTCMonth();
+      if (mIdx % step || d.getTime() < t0) continue;
+      const iso = d.toISOString().slice(0, 10);
+      const xx = x(iso);
       el('line', { x1: xx, x2: xx, y1: m.t, y2: H - m.b, stroke: 'var(--grid)', 'stroke-width': 0.5 }, svg);
       const t = el('text', { x: xx, y: H - 8, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--muted)' }, svg);
-      t.textContent = String(yr);
+      t.textContent = step >= 12 ? String(d.getUTCFullYear()) : `${d.getUTCMonth() + 1}/${String(d.getUTCFullYear()).slice(2)}`;
     }
     // Line.
     const dPath = dates.map((d, i) => `${i ? 'L' : 'M'}${x(d).toFixed(1)},${y(rates[d]).toFixed(1)}`).join('');

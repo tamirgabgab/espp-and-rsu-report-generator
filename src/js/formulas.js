@@ -75,7 +75,7 @@
     // "Fill from my lot"
     const lots = App.reportLots().filter(l => l.planType === 'ESPP' || l.planType === 'RSU');
     $('#fx-fill-wrap').hidden = !lots.length;
-    $('#fx-fill').innerHTML = '<option value="">בחירת עסקה…</option>' + lots.map((l, i) => `<option value="${i}">${App.esc(l.symbol || '—')} ${l.planType} · ${isFinite(l.qty) ? `${l.qty} מניות · ` : ''}נמכרה ${D(l.dateSold) || '—'}</option>`).join('');
+    $('#fx-fill').innerHTML = '<option value="">בחירת מכירה…</option>' + lots.map((l, i) => `<option value="${i}">${App.esc(l.symbol || '—')} ${l.planType} · ${isFinite(l.qty) ? `${l.qty} מניות · ` : ''}נמכרה ${D(l.dateSold) || '—'}</option>`).join('');
   }
 
   // ------------------------------------------------------------ calculation
@@ -116,8 +116,10 @@
   // ------------------------------------------------------------ output
 
   const rate = () => (+App.profile.marginalRate || 0) + (App.profile.includeNi ? +App.profile.niRate || 0 : 0);
+  // On a narrow screen the line may break before "= result", never inside it.
+  const eqWrap = s => { const i = s.lastIndexOf(' = '); return i < 0 ? s : `${s.slice(0, i)} <span class="eq-r">= ${s.slice(i + 3)}</span>`; };
   const step = (what, general, subst, note = '', cls = '') => `<li class="${cls}"><span class="what">${what}</span>
-    <span class="calc fx-general">${App.L(general)}</span><span class="calc">${App.L(subst)}</span>${note ? `<span class="note">${note}</span>` : ''}</li>`;
+    <span class="calc fx-general">${App.L(general)}</span><span class="calc">${App.L(eqWrap(subst))}</span>${note ? `<span class="note">${note}</span>` : ''}</li>`;
 
   function capitalSteps(r, d, label) {
     const c = r.calc;
@@ -238,7 +240,7 @@
       const l = lots[+e.target.value];
       if (!l) return;
       fillFromLot(l);
-      App.toast('הנתונים מולאו מהעסקה');
+      App.toast('הנתונים מולאו מהמכירה');
     });
     $('#fx-reset').addEventListener('click', () => { st = { ...EXAMPLE }; persist(); render(); App.toast('המחשבון אופס לדוגמה'); });
     App.syncWorkInputs();

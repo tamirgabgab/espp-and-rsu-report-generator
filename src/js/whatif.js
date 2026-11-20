@@ -56,7 +56,8 @@
       <div class="wi-chart" dir="ltr"></div>
       <div class="grid wi-dates">
         ${keys.map(k => `<div class="field"><label for="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}"><i class="sw wi-${P(k).cls}"></i> ${P(k).aria}</label>
-          <input id="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}" type="date" data-wi-key="${k}" min="${days[0]}" max="${days[days.length - 1]}"></div>`).join('')}
+          <input id="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}" type="date" data-wi-key="${k}" min="${days[0]}" max="${days[days.length - 1]}" aria-describedby="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}-il">
+          <span class="wi-date-il" id="wi-${k}-${lot.id}-${el.closest('.lots-mobile') ? 'm' : 'd'}-il" data-wi-il="${k}"></span></div>`).join('')}
       </div>
       <p class="hint">גוררים נקודה בגרף, מזיזים אותה עם החצים במקלדת (יום) או עם PageUp ו‑PageDown (חודש), או בוחרים תאריך.</p>
       <div class="wi-compare" aria-live="polite"></div>
@@ -102,13 +103,14 @@
       xOf = iso => M.l + ((t(iso) - x0) / (x1 - x0 || 1)) * (W - M.l - M.r);
       const yOf = v => M.t + (1 - (v - yMin) / (yMax - yMin)) * (H - M.t - M.b);
       const path = days.map((d, i) => `${i ? 'L' : 'M'}${xOf(d).toFixed(1)},${yOf(closes[i]).toFixed(1)}`).join('');
-      // Axis ticks: 4 prices, about 5 dates.
+      // Axis ticks: 4 prices; dates at most one per 90 px (three or four on a phone).
       const yTicks = [0, 1, 2, 3].map(i => yMin + ((yMax - yMin) * (i + 0.5)) / 4);
-      const span = (x1 - x0) / DAY;
-      const step = span > 1500 ? 12 : span > 700 ? 6 : span > 300 ? 3 : 1;
+      const months = (x1 - x0) / DAY / 30.44;
+      const maxTicks = Math.max(2, Math.floor((W - M.l - M.r) / 90));
+      const step = [1, 2, 3, 6, 12, 24].find(s => months / s <= maxTicks) || 36;
       const xTicks = [];
       for (let d = new Date(x0); d.getTime() <= x1; d.setUTCMonth(d.getUTCMonth() + 1)) {
-        if (d.getUTCMonth() % step === 0) xTicks.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
+        if ((d.getUTCFullYear() * 12 + d.getUTCMonth()) % step === 0) xTicks.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
       }
       const tickLabel = d => (step >= 12 ? String(d.getUTCFullYear()) : `${d.getUTCMonth() + 1}/${String(d.getUTCFullYear()).slice(2)}`);
       const pt = k => { const iso = st[field[k]]; return { iso, x: xOf(iso), y: yOf(prices.rates[iso]) }; };
@@ -116,15 +118,31 @@
       const sale = pt('sale');
       const lo = prices.low && prices.low[sale.iso], hi = prices.high && prices.high[sale.iso];
       const range = lo && hi ? `<line class="wi-range" x1="${sale.x.toFixed(1)}" x2="${sale.x.toFixed(1)}" y1="${yOf(hi).toFixed(1)}" y2="${yOf(lo).toFixed(1)}"/>` : '';
+      // Point labels: kept inside the plot, and moved under the point when they would overlap another label.
+      const LABEL_H = 16, charW = 7;
+      // Labels must not cover any point either.
+      const placed = keys.map(k => { const p = pt(k); return { l: p.x - 9, r: p.x + 9, t: p.y - 9, b: p.y + 9 }; });
+      const labelOf = k => {
+        const p = pt(k), text = P(k).label, w = text.length * charW;
+        let x = p.x, anchor = 'middle';
+        if (x - w / 2 < M.l) { x = Math.max(p.x - 10, M.l); anchor = 'start'; } else if (x + w / 2 > W - M.r) { x = Math.min(p.x + 10, W - M.r); anchor = 'end'; }
+        const box = y => { const l = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2; return { l, r: l + w, t: y - 12, b: y + 4 }; };
+        const hits = b => placed.some(o => b.l < o.r && o.l < b.r && b.t < o.b && o.t < b.b);
+        const above = p.y - 14, below = p.y + 24;
+        let y = p.y < M.t + 28 ? below : above;
+        if (hits(box(y))) y = y === above ? below : above;
+        if (hits(box(y))) y = (y === below ? below : above) + (y === below ? LABEL_H : -LABEL_H);
+        placed.push(box(y));
+        return { x, y, anchor, text };
+      };
       const handle = k => {
-        const p = pt(k);
+        const p = pt(k), lb = labelOf(k);
         const val = k === 'sale' && lo && hi ? `${D(p.iso)}, ${lo}–${hi} $` : `${D(p.iso)}, ${prices.rates[p.iso]} $`;
-        const labelY = p.y < M.t + 28 ? p.y + 24 : p.y - 14;
         return `<g class="wi-handle wi-${P(k).cls}" data-key="${k}" tabindex="0" role="slider" aria-label="${P(k).aria}"
             aria-valuemin="0" aria-valuemax="${days.length - 1}" aria-valuenow="${idxOf(p.iso)}" aria-valuetext="${val}">
           <circle class="hit" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="22"/>
           <circle class="dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7"/>
-          <text x="${p.x.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle">${P(k).label}</text>
+          <text x="${lb.x.toFixed(1)}" y="${lb.y.toFixed(1)}" text-anchor="${lb.anchor}">${lb.text}</text>
         </g>`;
       };
       lastW = W;
@@ -139,6 +157,8 @@
       </svg>`;
       svg = chart.querySelector('svg');
       for (const inp of el.querySelectorAll('[data-wi-key]')) if (document.activeElement !== inp) inp.value = st[field[inp.dataset.wiKey]];
+      // The date field follows the browser's language; show the app's format next to it.
+      for (const s of el.querySelectorAll('[data-wi-il]')) s.textContent = D(st[field[s.dataset.wiIl]]);
       if (keepFocus) { focusKey = keepFocus; const h = svg.querySelector(`[data-key="${keepFocus}"]`); if (h) h.focus(); }
     }
 
@@ -165,9 +185,13 @@
         ['מזומן אחרי מס ₪', c => shek(c.r.cash)],
         ['רווח נקי ₪', c => shek(c.r.net), 'total'],
       ].filter(Boolean);
+      if (!variants.length) {
+        compare.innerHTML = `<p class="hint">הנקודות במקומות האמיתיים. ${isEspp ? `תחילת התקופה: ${D(st.offerStart)}${lot.offerStart ? '' : ' (הנחה: חצי שנה לפני הרכישה)'}. ` : ''}מחירי הסגירה של ${App.esc(lot.symbol)} מ‑Yahoo Finance. אחרי שמזיזים נקודה מופיעה כאן השוואה בין התוצאה בפועל לתוצאה החדשה.</p>`;
+        return;
+      }
       const diff = variants.length ? `<tr class="diff"><th scope="row">הפרש ברווח הנקי ₪</th><td></td>${cols.slice(1).map(c => `<td class="num ${c.r.ok && c.r.net - real.net > 0 ? 'gain' : c.r.ok && c.r.net - real.net < 0 ? 'loss' : ''}">${c.r.ok ? App.signed(c.r.net - real.net) : '—'}</td>`).join('')}</tr>` : '';
-      compare.innerHTML = `<div class="table-scroll"><table class="mini-table wi-table">
-          <thead><tr><th scope="col"></th>${cols.map(c => `<th scope="col">${c.label}</th>`).join('')}</tr></thead>
+      compare.innerHTML = `<div class="table-scroll" tabindex="0" role="region" aria-label="השוואה: בפועל מול מה אם, ${App.esc(lot.symbol)} ${D(lot.dateSold)}"><table class="mini-table wi-table">
+          <thead><tr><th scope="col"><span class="visually-hidden">נתון</span></th>${cols.map(c => `<th scope="col">${c.label}</th>`).join('')}</tr></thead>
           <tbody>${rows.map(([label, f, cls]) => `<tr class="${cls || ''}"><th scope="row">${label}</th>${cols.map(c => `<td class="num">${c.r.ok ? f(c) : '—'}</td>`).join('')}</tr>`).join('')}${diff}</tbody>
         </table></div>
         <p class="hint">${variants.length

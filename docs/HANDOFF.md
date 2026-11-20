@@ -590,6 +590,44 @@ explanation view.
 Tests: 56 Node tests and 7 Python tests. Browser check: imports (Excel and
 PDF), preview, draft, simulator, formulas, "what if", no console errors.
 
+### Round 4: UX and UI
+Decisions taken with the owner: ask for the name and ID number in a dialog when
+"הורדת PDF" is pressed and one is missing (step 4 stays where it is); "מכירה"
+for a report row and "מנה" for a simulator holding; the rate chart starts 3
+months before the earliest purchase or grant; the theme switch moves to the
+footer; the tabs stay as they are; "what if" and the rate check are closed
+`<details>`; no confirmation for deleting one sale (undo instead, U15).
+- **U1:** in a lot card the calculation table shows each row as label + amount,
+  with "$ × rate" on a second line (`.calc-m` cells); the panel loses its own
+  border there.
+- **U2:** "what if" date ticks are at most one per 90 px; point labels stay
+  inside the plot and move under the point when they would cover another label
+  or point.
+- **U3:** the comparison table appears only after a point is moved. The open
+  state of the two sections survives re-renders (`openMore`).
+- **U4:** the comparison table is full width.
+- **U5:** light accent `#2570cc`; filled buttons, chips and step numbers use
+  `--accent-fill` (white text 4.9:1 in both themes). axe: no violations in
+  either theme at 375 and 1280 px, nor in the formulas and explanation views.
+- **U6:** hidden header text in the three tables; sideways-scrolling regions
+  are focusable with unique labels; the sticky bar is a labelled section
+  inside `<main>`.
+- **U7:** `askDetails()` dialog (`#details-dialog`) with the same ID check;
+  "הורדה בלי הפרטים" skips it for the rest of the visit.
+- **U8:** on a wide screen the sticky bar shows only after the toolbar has
+  scrolled out of view (`IntersectionObserver`); it also hides when leaving
+  the report view.
+- **U9:** shorter introduction on phones (`.lead-short`), theme switch in the
+  footer.
+- **U10:** "עסקה" → "מכירה" everywhere in the UI; "מס רווח הון (משוער)" for
+  the 25% tax.
+- **U11:** a toast with "undo" stays until closed (×) or replaced by the next
+  toast; the status sentence is repeated at the top of the panel.
+- **U12:** rate chart range and title follow the lots in view; month ticks for
+  short ranges.
+- **U13:** each "what if" date field shows the app's date format under it.
+- **U14:** formula lines break before "= result", never inside it.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -620,7 +658,7 @@ PDF), preview, draft, simulator, formulas, "what if", no console errors.
 7. **Other currencies.** Only USD is supported.
 8. **Page 2 of the form** ("פרטים נוספים") is not included. It is not needed
    for simple share sales.
-9. **plan.md rounds 4-5** are still open, plus S3 (SheetJS upgrade) and S7 (CSP).
+9. **plan.md round 5** is still open, plus S3 (SheetJS upgrade) and S7 (CSP).
 
 ## How to continue
 - Read `CLAUDE.md` first: always answer the user in Hebrew.

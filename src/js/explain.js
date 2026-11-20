@@ -91,7 +91,7 @@
         <h3>${s.title}</h3>
         ${(s.text || []).map(p => `<p>${p}</p>`).join('')}
         ${s.table ? `<dl class="ex-symbols">${s.table.map(([sym, d]) => `<dt dir="ltr">${inline(sym)}</dt><dd>${d}</dd>`).join('')}</dl>` : ''}
-        ${(s.tex || []).map(t => `<div class="ex-math" dir="ltr">${k(t)}</div>`).join('')}
+        ${(s.tex || []).map((t, i) => `<div class="ex-math" dir="ltr" tabindex="0" role="region" aria-label="נוסחה ${i + 1}: ${s.title.replace(/<[^>]*>/g, '').replace(/"/g, '')}">${k(t)}</div>`).join('')}
       </section>`).join('');
   }
 

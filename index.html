@@ -28,15 +28,8 @@
 <body>
   <main class="page">
     <header class="page-header">
-      <div class="page-header-top">
-        <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
-        <div id="theme-switch" class="segmented" role="radiogroup" aria-label="ערכת צבעים">
-          <button type="button" role="radio" data-theme-opt="auto" aria-checked="true" tabindex="0">אוטומטי</button>
-          <button type="button" role="radio" data-theme-opt="light" aria-checked="false" tabindex="-1">בהיר</button>
-          <button type="button" role="radio" data-theme-opt="dark" aria-checked="false" tabindex="-1">כהה</button>
-        </div>
-      </div>
-      <p class="lead">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</p>
+      <h1>מחולל טופס 1399 למכירת מניות ESPP ו‑RSU</h1>
+      <p class="lead"><span class="lead-long">מעלים את דוח Gains &amp; Losses מ‑E*Trade, בודקים את החישוב, ומורידים טופס 1399 ממולא לכל מכירה ודף סיכום לרואה החשבון. הכל רץ בדפדפן שלך, ושום מידע לא נשלח לשרת.</span><span class="lead-short">מעלים את הדוח מ‑E*Trade ומורידים טופס 1399 ממולא. שום מידע לא נשלח לשרת.</span></p>
       <div class="view-tabs" role="tablist" aria-label="תצוגה">
         <button type="button" role="tab" id="tab-report" aria-controls="view-report" aria-selected="true" tabindex="0">דוח מכירות</button>
         <button type="button" role="tab" id="tab-sim" aria-controls="view-sim" aria-selected="false" tabindex="-1">סימולטור מכירה</button>
@@ -68,7 +61,7 @@
         <div class="tile-sub" id="t-net-sub"></div>
       </div>
       <div class="tile tile-accent">
-        <div class="tile-label">מס משוער (25%)</div>
+        <div class="tile-label">מס רווח הון משוער (25%)</div>
         <div class="tile-value" id="t-tax"></div>
         <div class="tile-sub" id="t-tax-sub"></div>
       </div>
@@ -86,7 +79,7 @@
 
     <!-- 1. Import -->
     <section class="card" id="import" aria-labelledby="import-title">
-      <h2 id="import-title"><span class="step">1</span> ייבוא עסקאות</h2>
+      <h2 id="import-title"><span class="step">1</span> ייבוא מכירות</h2>
       <label class="dropzone" id="dropzone" for="file">
         <svg class="dz-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="dz-title">גוררים לכאן את הקובץ מ‑E*Trade</span>
@@ -94,7 +87,7 @@
         <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*" class="visually-hidden">
       </label>
       <div class="actions">
-        <button id="add-row" class="btn" type="button">הוספת עסקה ידנית</button>
+        <button id="add-row" class="btn" type="button">הוספת מכירה ידנית</button>
         <button id="load-example" class="btn btn-quiet" type="button">טעינת דוגמה</button>
       </div>
       <div class="backup-row">
@@ -108,8 +101,8 @@
         <ol>
           <li>ב‑E*Trade נכנסים ל‑<b>Stock Plan</b>, משם ל‑<b>My Account</b> ואז ל‑<b>Gains &amp; Losses</b>.</li>
           <li>בוחרים את שנת המס (Tax Year), לוחצים <b>Download</b> ואז <b>Download Expanded</b>.</li>
-          <li>מעלים כאן את הקובץ שירד. כל שורת Sell בקובץ היא מכירה נפרדת (lot) עם תאריך רכישה משלה.</li>
-          <li>אם רוצים לראות את השער בשעת המכירה: את שעת הביצוע מוצאים ב‑<b>View Order Details</b>, ומדביקים אותה בעריכת העסקה.</li>
+          <li>מעלים כאן את הקובץ שירד. כל שורת Sell בקובץ היא מכירה נפרדת, עם תאריך רכישה משלה.</li>
+          <li>אם רוצים לראות את השער בשעת המכירה: את שעת הביצוע מוצאים ב‑<b>View Order Details</b>, ומדביקים אותה בעריכת המכירה.</li>
         </ol>
       </details>
       <div id="import-msg" class="msg" role="status" aria-live="polite"></div>
@@ -118,19 +111,19 @@
     <!-- 2. Lots -->
     <section class="card" id="lots" aria-labelledby="lots-title">
       <div class="card-head">
-        <h2 id="lots-title" tabindex="-1"><span class="step">2</span> עסקאות</h2>
+        <h2 id="lots-title" tabindex="-1"><span class="step">2</span> מכירות</h2>
         <div class="card-tools">
           <button id="clear-all" class="btn btn-quiet btn-sm" type="button" hidden>מחיקת הכל</button>
         </div>
       </div>
-      <p class="hint" id="lots-hint">כל שורה היא lot: מניות שנקנו בתאריך אחד ונמכרו בתאריך אחד. השערים נלקחים מהשער היציג של בנק ישראל. בלחיצה על "הצגת החישוב" רואים את החישוב המלא ואת בקרת השערים.</p>
+      <p class="hint" id="lots-hint">כל שורה היא מכירה: מניות שנקנו בתאריך אחד ונמכרו בתאריך אחד. השערים נלקחים מהשער היציג של בנק ישראל. בלחיצה על "הצגת החישוב" רואים את החישוב המלא ואת בקרת השערים.</p>
       <div class="lots-desktop">
         <table class="lots-table">
           <thead>
             <tr>
               <th scope="col"><span class="visually-hidden">סטטוס</span></th>
               <th scope="col">נייר</th><th scope="col">כמות</th><th scope="col">נרכש</th><th scope="col">נמכר</th>
-              <th scope="col">תמורה $</th><th scope="col">עלות $</th><th scope="col">רווח ריאלי ₪</th><th scope="col">מס ₪</th>
+              <th scope="col">תמורה $</th><th scope="col">עלות $</th><th scope="col">רווח ריאלי ₪</th><th scope="col">מס רווח הון ₪</th>
               <th scope="col"><span class="visually-hidden">פעולות</span></th>
             </tr>
           </thead>
@@ -139,7 +132,7 @@
       </div>
       <div class="lots-mobile" id="lots-cards"></div>
       <div id="empty-state" class="empty">
-        <p class="empty-title">עוד אין עסקאות</p>
+        <p class="empty-title">עוד אין מכירות</p>
         <p>מעלים את קובץ Gains &amp; Losses מ‑E*Trade ומקבלים טופס 1399 ממולא לכל מכירה, עם חישוב המס.</p>
         <div class="actions actions-center">
           <button id="empty-upload" class="btn btn-primary" type="button">העלאת קובץ מ‑E*Trade</button>
@@ -162,7 +155,7 @@
 
     <!-- Chart -->
     <section class="card viz-root" aria-labelledby="chart-title">
-      <h2 id="chart-title">שער הדולר היציג מ‑2020</h2>
+      <h2 id="chart-title">שער הדולר היציג</h2>
       <div class="chart-legend" aria-hidden="true">
         <span><i class="mk mk-buy"></i> רכישה</span>
         <span><i class="mk mk-sell"></i> מכירה</span>
@@ -205,7 +198,7 @@
           <input id="p-date" type="date">
         </div>
         <label class="check">
-          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 עם נאמן (ברירת מחדל לכל העסקאות)
+          <input id="p-102" type="checkbox"> מניות לפי סעיף 102 עם נאמן (ברירת מחדל לכל המכירות)
         </label>
       </div>
       <h3 class="sub-title">מס על הכנסת העבודה (מסלול 102)</h3>
@@ -221,7 +214,7 @@
         </div>
       </div>
       <p class="hint">במסלול 102 החלק של ההטבה (ההנחה ב‑ESPP, ממוצע 30 הימים ב‑RSU) ממוסה כהכנסת עבודה, והנאמן מנכה את המס. הכלי מעריך את המס הזה לפי השיעור שכאן, לבקרה בלבד. הוא לא נכנס לטופס 1399.</p>
-      <p class="hint">אחרי מילוי הפרטים מורידים את הטופס מהכפתור "הורדת PDF" בראש העמוד או בשורה התחתונה.</p>
+      <p class="hint">את הטופס מורידים מהכפתור "הורדת PDF" בראש העמוד. אם השם או מספר הזהות חסרים, הם יתבקשו לפני ההורדה.</p>
     </section>
 
     </div>
@@ -313,7 +306,7 @@
             </div>
           </div>
           <div class="field" id="fx-fill-wrap" hidden>
-            <label for="fx-fill">מילוי מעסקה שלי</label>
+            <label for="fx-fill">מילוי ממכירה שלי</label>
             <select id="fx-fill"></select>
           </div>
         </div>
@@ -357,34 +350,43 @@
     <div id="view-explain" role="tabpanel" aria-labelledby="tab-explain" hidden>
       <section class="card explain-page" aria-labelledby="ex-title">
         <h2 id="ex-title">איך מחושב המס על מכירת ESPP ו‑RSU</h2>
-        <p class="lead">ההסבר הכללי, עם כל הנוסחאות. כדי לראות אותן עם המספרים של מכירה מסוימת, פותחים את לשונית "נוסחאות", או לוחצים "כל השלבים עם הנוסחאות" ליד עסקה בדוח.</p>
+        <p class="lead">ההסבר הכללי, עם כל הנוסחאות. כדי לראות אותן עם המספרים של מכירה מסוימת, פותחים את לשונית "נוסחאות", או לוחצים "כל השלבים עם הנוסחאות" ליד מכירה בדוח.</p>
         <div id="ex-body"></div>
         <p class="hint">החישוב מבוסס על חוזר מס הכנסה 10/2025 ועל סעיף 102 לפקודה. במסלול 102 אין הכרעה רשמית בין חישוב ריאלי לנומינלי של חלק רווח ההון, והכלי מחשב ריאלית. הכלי אינו ייעוץ מס.</p>
       </section>
     </div>
 
     <footer class="foot">
-      <p><button id="install-app" class="btn btn-sm" type="button" hidden>התקנה כאפליקציה</button></p>
+      <div class="foot-tools">
+        <span class="foot-label" id="theme-label">ערכת צבעים</span>
+        <div id="theme-switch" class="segmented" role="radiogroup" aria-labelledby="theme-label">
+          <button type="button" role="radio" data-theme-opt="auto" aria-checked="true" tabindex="0">אוטומטי</button>
+          <button type="button" role="radio" data-theme-opt="light" aria-checked="false" tabindex="-1">בהיר</button>
+          <button type="button" role="radio" data-theme-opt="dark" aria-checked="false" tabindex="-1">כהה</button>
+        </div>
+        <button id="install-app" class="btn btn-sm" type="button" hidden>התקנה כאפליקציה</button>
+      </div>
       <p>החישוב מבוסס על חוזר מס הכנסה 10/2025 (הלכת מוזס) ועל השער היציג של בנק ישראל. הכלי אינו ייעוץ מס. <a href="https://github.com/tamirgabgab/espp-and-rsu-report-generator#readme">מדריך ותיעוד</a></p>
     </footer>
+
+    <!-- Sticky result bar (shown once the toolbar has scrolled out of view) -->
+    <section id="sticky" class="sticky-bar" aria-label="תוצאה והורדה" hidden>
+      <div class="sticky-inner">
+        <div class="sticky-nums">
+          <span>רווח ריאלי <b id="s-net"></b></span>
+          <span>מס רווח הון <b id="s-tax"></b></span>
+        </div>
+        <button id="s-dl" class="btn btn-primary" type="button">הורדת PDF</button>
+      </div>
+    </section>
   </main>
 
-  <!-- Sticky result bar -->
-  <div id="sticky" class="sticky-bar" hidden>
-    <div class="sticky-inner">
-      <div class="sticky-nums">
-        <span>רווח ריאלי <b id="s-net"></b></span>
-        <span>מס <b id="s-tax"></b></span>
-      </div>
-      <button id="s-dl" class="btn btn-primary" type="button">הורדת PDF</button>
-    </div>
-  </div>
 
   <!-- Edit lot drawer -->
   <dialog id="lot-dialog" class="drawer" aria-labelledby="lot-dialog-title">
     <form id="lot-form" method="dialog" novalidate>
       <header class="drawer-head">
-        <h2 id="lot-dialog-title">עריכת עסקה</h2>
+        <h2 id="lot-dialog-title">עריכת מכירה</h2>
         <button type="button" class="icon-btn" data-close aria-label="סגירה" data-tip="סגירה · Esc">×</button>
       </header>
       <div class="drawer-body">
@@ -498,7 +500,7 @@
         </details>
       </div>
       <footer class="drawer-foot">
-        <button type="submit" class="btn btn-primary" id="lot-save">שמירת העסקה</button>
+        <button type="submit" class="btn btn-primary" id="lot-save">שמירת המכירה</button>
         <button type="button" class="btn" data-close>ביטול</button>
       </footer>
     </form>
@@ -576,8 +578,8 @@
       <p class="hint">הקריאה נעשית בדפדפן שלך. הקובץ לא נשלח לשום מקום ולא נשמר.</p>
     </div>
     <footer class="drawer-foot">
-      <button type="button" class="btn btn-primary" id="doc-add" hidden>הוספת העסקאות</button>
-      <button type="button" class="btn" id="doc-manual" hidden>פתיחת עסקה חדשה</button>
+      <button type="button" class="btn btn-primary" id="doc-add" hidden>הוספת המכירות</button>
+      <button type="button" class="btn" id="doc-manual" hidden>פתיחת מכירה חדשה</button>
       <button type="button" class="btn" data-close>ביטול</button>
     </footer>
   </dialog>
@@ -592,6 +594,27 @@
       </div>
     </header>
     <div class="preview-pages" id="preview-pages"></div>
+  </dialog>
+
+  <!-- Name and ID number, asked when "download PDF" is pressed and one is missing -->
+  <dialog id="details-dialog" class="confirm" aria-labelledby="details-title" aria-describedby="details-body">
+    <form id="details-form" method="dialog" novalidate>
+      <h2 id="details-title">פרטים לטופס</h2>
+      <p id="details-body" class="hint">השם נשמר רק בדפדפן הזה. מספר הזהות לא נשמר בכלל.</p>
+      <div class="field">
+        <label for="d-name">שם המוכר</label>
+        <input id="d-name" type="text" autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="d-id">מספר תעודת זהות</label>
+        <input id="d-id" type="text" inputmode="numeric" maxlength="9" autocomplete="off" aria-describedby="d-id-err">
+        <p class="field-error" id="d-id-err"></p>
+      </div>
+      <div class="confirm-actions">
+        <button type="button" class="btn" id="details-skip">הורדה בלי הפרטים</button>
+        <button type="submit" class="btn btn-primary" id="details-ok">הורדת PDF</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- Destructive confirmation (delete all) -->

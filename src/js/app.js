@@ -118,23 +118,34 @@
 
   // ------------------------------------------------------------ toasts
 
+  /**
+   * A short message at the bottom. A toast with an action ("undo") stays until it is
+   * closed or the next toast replaces it; a plain one fades after a few seconds.
+   */
   function toast(text, action) {
     const host = $('#toasts');
+    for (const old of host.querySelectorAll('.toast')) old.remove();
     const el = document.createElement('div');
     el.className = 'toast';
     el.setAttribute('role', 'status');
     el.innerHTML = `<span>${esc(text)}</span>`;
     let timer;
     const close = () => { clearTimeout(timer); el.remove(); };
-    if (action) {
+    const button = (label, run, cls = '', aria = '') => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = action.label;
-      b.addEventListener('click', () => { action.run(); close(); });
+      b.className = cls;
+      b.textContent = label;
+      if (aria) b.setAttribute('aria-label', aria);
+      b.addEventListener('click', () => { run(); close(); });
       el.appendChild(b);
+    };
+    if (action) {
+      button(action.label, action.run);
+      button('×', () => {}, 'toast-close', 'סגירת ההודעה');
     }
     host.appendChild(el);
-    timer = setTimeout(close, action ? 7000 : 3500);
+    if (!action) timer = setTimeout(close, 3500);
   }
 
   // ------------------------------------------------------------ render all
@@ -168,11 +179,16 @@
 
   // ------------------------------------------------------------ lots
 
+  /** The status of a sale: badge class, short label and the full sentence (shown in the panel too, since `title` does not exist on touch). */
+  function statusOf(it) {
+    if (!it.calc.ok) return ['warn', '⚠ חסר', 'חסרים נתונים לחישוב.'];
+    if (it.calc.early) return ['info', 'מס שולי', 'נמכר לפני תום 24 החודשים אצל הנאמן: כל הרווח במס שולי, בלי טופס 1399.'];
+    if (it.rateWarn) return ['warn', '⚠ שער', 'סטייה חריגה בין מקורות השער. הפרטים בבקרת השערים למטה.'];
+    return ['ok', '✓ תקין', 'החישוב תקין והשערים תואמים.'];
+  }
   function statusBadge(it) {
-    if (!it.calc.ok) return '<span class="badge badge-warn" title="חסרים נתונים">⚠ חסר</span>';
-    if (it.calc.early) return '<span class="badge badge-info" title="נמכר לפני תום 24 החודשים אצל הנאמן: כל הרווח במס שולי, בלי טופס 1399">מס שולי</span>';
-    if (it.rateWarn) return '<span class="badge badge-warn" title="סטייה חריגה בין מקורות השער">⚠ שער</span>';
-    return '<span class="badge badge-ok" title="החישוב תקין והשערים תואמים">✓ תקין</span>';
+    const [cls, label, text] = statusOf(it);
+    return `<span class="badge badge-${cls}" title="${esc(text)}">${label}</span>`;
   }
 
   const ICON_EDIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
@@ -183,8 +199,8 @@
     const open = openPanels.has(id);
     return `<button type="button" class="btn-link" data-act="explain" data-id="${id}" aria-expanded="${open}">${open ? 'הסתרת החישוב' : 'הצגת החישוב'}</button>
       <span class="${compact ? 'right' : ''}">
-        <button type="button" class="icon-btn" data-act="edit" data-id="${id}" aria-label="עריכת העסקה" data-tip="עריכת העסקה">${ICON_EDIT}</button>
-        <button type="button" class="icon-btn danger" data-act="delete" data-id="${id}" aria-label="מחיקת העסקה" data-tip="מחיקת העסקה">${ICON_DEL}</button>
+        <button type="button" class="icon-btn" data-act="edit" data-id="${id}" aria-label="עריכת המכירה" data-tip="עריכת המכירה">${ICON_EDIT}</button>
+        <button type="button" class="icon-btn danger" data-act="delete" data-id="${id}" aria-label="מחיקת המכירה" data-tip="מחיקת המכירה">${ICON_DEL}</button>
       </span>`;
   }
 
@@ -230,7 +246,7 @@
         <div class="lc-dates">נקנו ${Core.formatDateIL(lot.dateAcquired) || '—'} · נמכרו ${Core.formatDateIL(lot.dateSold) || '—'}${lot.timeSold ? ` <bdi>${esc(lot.timeSold)}</bdi>` : ''}</div>
         ${calc.ok ? `<div class="lc-metrics">
           <div class="lc-metric"><div class="k">רווח ריאלי</div><div class="v ${realCls}">${ils(calc.real)}</div></div>
-          <div class="lc-metric"><div class="k">מס משוער</div><div class="v">${ils(calc.tax)}</div></div>
+          <div class="lc-metric"><div class="k">מס רווח הון</div><div class="v">${ils(calc.tax)}</div></div>
           ${calc.workIls > 0 ? `<div class="lc-metric"><div class="k">הכנסת עבודה (102)</div><div class="v">${ils(calc.workIls)}</div></div>
           <div class="lc-metric"><div class="k">מס שולי משוער</div><div class="v">${ils(it.workTax)}</div></div>` : ''}
         </div>` : `<ul class="lc-issues">${calc.issues.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`}
@@ -266,7 +282,13 @@
     const rs = calc.sell.rate;
     const fees = isFinite(it.lot.feesUsd) ? it.lot.feesUsd : 0;
     const rateCell = r => (r ? `<bdi class="ltr">${r.rate}</bdi> <span class="muted">${D(r.date)}${r.manual ? ', ידני' : ''}</span>` : '—');
-    const row = (label, usdVal, rate, ilsVal, cls = '') => `<tr class="${cls}"><th scope="row">${label}</th><td class="num">${isFinite(usdVal) ? usd(usdVal) : '—'}</td><td>${rate}</td><td class="num">${isFinite(ilsVal) ? fmt(ilsVal) : '—'}</td></tr>`;
+    // Each row also carries a phone version (CSS shows it in a lot card): the amount, and "$ × rate" under it.
+    const row = (label, usdVal, r, ilsVal, cls = '') => {
+      const hasIls = isFinite(ilsVal);
+      const main = hasIls ? `${fmt(ilsVal)} ₪` : isFinite(usdVal) ? `${usd(usdVal)} $` : '—';
+      const sub = hasIls && r && isFinite(usdVal) ? `<span class="m-sub">${usd(usdVal)} $ × ${r.rate}</span>` : '';
+      return `<tr class="${cls}"><th scope="row">${label}</th><td class="num c-usd">${isFinite(usdVal) ? usd(usdVal) : '—'}</td><td class="c-rate">${rateCell(r)}</td><td class="num c-ils">${hasIls ? fmt(ilsVal) : '—'}</td><td class="calc-m">${main}${sub}</td></tr>`;
+    };
     const rows = [];
     const results = [];
     const mRate = (+profile.marginalRate || 0) + (profile.includeNi ? +profile.niRate || 0 : 0);
@@ -274,15 +296,15 @@
       const vLabel = calc.baseSource === 'avg30' ? `שווי ההטבה <span class="muted">(ממוצע 30 יום: ${calc.avg.avg} × ${it.lot.qty})</span>`
         : calc.baseSource === 'manual' ? `שווי ההטבה <span class="muted">(${it.lot.planType === 'RSU' ? 'ממוצע 30 יום, ידני' : 'מדוח הנאמן'})</span>`
           : 'שווי ההטבה <span class="muted">(מחיר השוק ביום הרכישה)</span>';
-      if (!calc.early) rows.push(row(vLabel, calc.baseUsd, '', NaN));
+      if (!calc.early) rows.push(row(vLabel, calc.baseUsd, null, NaN));
       const paidNote = calc.paidSource === 'lookback' ? ` <span class="muted">(מחושב: ${esppPlanText(calc, it.lot)})</span>` : calc.paidKnown ? '' : ' <span class="muted">(חסר, נחשב כ‑0 הנחה)</span>';
-      rows.push(row(`שולם${paidNote}`, calc.paidUsd, '', NaN));
-      rows.push(row(`הכנסת עבודה${calc.early ? ' <span class="muted">(כל הרווח)</span>' : ''}`, calc.workUsd, rateCell(calc.sell), calc.workIls, 'hl'));
+      rows.push(row(`שולם${paidNote}`, calc.paidUsd, null, NaN));
+      rows.push(row(`הכנסת עבודה${calc.early ? ' <span class="muted">(כל הרווח)</span>' : ''}`, calc.workUsd, calc.sell, calc.workIls, 'hl'));
     }
     if (!calc.noForm) {
-      rows.push(row('תמורה', lot.proceedsUsd, rateCell(calc.sell), calc.proceedsIls));
-      rows.push(row(it.is102 ? 'עלות לרווח ההון <span class="muted">(שולם + הכנסת עבודה)</span>' : 'עלות', lot.costUsd, rateCell(calc.buy), calc.costIls));
-      if (fees) rows.push(row('עמלות', fees, rateCell(calc.sell), calc.feesIls));
+      rows.push(row('תמורה', lot.proceedsUsd, calc.sell, calc.proceedsIls));
+      rows.push(row(it.is102 ? 'עלות לרווח ההון <span class="muted">(שולם + הכנסת עבודה)</span>' : 'עלות', lot.costUsd, calc.buy, calc.costIls));
+      if (fees) rows.push(row('עמלות', fees, calc.sell, calc.feesIls));
       const cf = Core.closedFormReal(lot, calc.buy.rate, rs);
       const A = Core.roundILS(cf.A);
       const rule = cf.A >= 0 && cf.B >= 0 ? 'הקטן מביניהם' : cf.A <= 0 && cf.B <= 0 ? 'ההפסד הקטן מביניהם' : 'סימנים שונים, ולכן 0';
@@ -314,10 +336,14 @@
       if (e.mismatch) notes.push(`הסכום ששולם (${usd(Core.round2(calc.paidUsd / it.lot.qty))} $ למניה) שונה ממחיר ה‑Lookback (${esppPlanText(calc, it.lot)}). כדאי לבדוק את הסכום, את תאריך תחילת ההצעה ואת אחוז ההנחה.`);
       if ((calc.paidSource === 'lookback' || e.mismatch) && e.s0Source === 'close') notes.push('המחיר בתחילת תקופת ההצעה נלקח ממחיר הסגירה (Yahoo, מתואם לפיצולים), כי לא הוזן Grant Date FMV מ‑E*Trade.');
     }
-    if (it.is102 && calc.baseSource === 'avg30') notes.push('ממוצע 30 הימים מחושב ממחירי סגירה מ‑Yahoo, שמתואמים לפיצולי מניה. אם הסכום בדוח הנאמן שונה, עדיף להקליד אותו בעריכת העסקה.');
+    if (it.is102 && calc.baseSource === 'avg30') notes.push('ממוצע 30 הימים מחושב ממחירי סגירה מ‑Yahoo, שמתואמים לפיצולי מניה. אם הסכום בדוח הנאמן שונה, עדיף להקליד אותו בעריכת המכירה.');
+    const id = it.lot.id;
+    const hasWi = PRICES[it.lot.symbol] && (it.lot.planType === 'ESPP' || it.lot.planType === 'RSU');
+    const more = (key, title, body) => `<details class="panel-more" data-more="${id}:${key}"${openMore.has(`${id}:${key}`) ? ' open' : ''}><summary>${title}</summary>${body}</details>`;
     return `<div class="panel">
-      <div class="table-scroll"><table class="mini-table calc-table">
-        <thead><tr><th scope="col"></th><th scope="col">$</th><th scope="col">שער</th><th scope="col">₪</th></tr></thead>
+      <p class="panel-status">${esc(statusOf(it)[2])}</p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="טבלת החישוב, ${esc(it.lot.symbol || '')} ${D(it.lot.dateSold)}"><table class="mini-table calc-table">
+        <thead><tr><th scope="col"><span class="visually-hidden">שורה</span></th><th scope="col">$</th><th scope="col">שער</th><th scope="col">₪</th><th scope="col" class="calc-m">סכום</th></tr></thead>
         <tbody>${rows.join('')}</tbody></table></div>
       <dl class="calc-results">${results.join('')}</dl>
       ${notes.map(n => `<p class="case">${esc(n)}</p>`).join('')}
@@ -325,10 +351,9 @@
         <button type="button" class="btn-link" data-act="to-formulas" data-id="${it.lot.id}">כל השלבים עם הנוסחאות</button>
         <button type="button" class="btn-link" data-act="to-explain" data-id="${it.lot.id}">איך מחושב המס?</button>
       </div>
-      ${PRICES[it.lot.symbol] && (it.lot.planType === 'ESPP' || it.lot.planType === 'RSU') ? `<h3>מחיר המניה: מה היה קורה אילו…</h3><div class="wi" data-wi="${it.lot.id}"></div>` : ''}
-      <h3>בקרת שערים</h3>
-      ${checksTable(it)}
-      <p class="intraday" data-intraday="${it.lot.id}">${it.lot.timeSold ? '' : 'כדי לראות את שער השוק בדקת המכירה, מוסיפים את שעת המכירה בעריכת העסקה.'}</p>
+      ${hasWi ? more('wi', 'מחיר המניה: מה היה קורה אילו…', `<div class="wi" data-wi="${id}"></div>`) : ''}
+      ${more('rates', `בקרת שערים${it.rateWarn ? ' ⚠' : ''}`, `${checksTable(it)}
+        <p class="intraday" data-intraday="${id}">${it.lot.timeSold ? '' : 'כדי לראות את שער השוק בדקת המכירה, מוסיפים את שעת המכירה בעריכת המכירה.'}</p>`)}
     </div>`;
   }
 
@@ -343,8 +368,8 @@
       const cc = crossCheckOn(d);
       return `<tr><th scope="row">${label} ${Core.formatDateIL(d)}</th><td><bdi class="ltr">${cc.boi ? cc.boi.rate : '—'}</bdi></td>${cell(cc.checks.ecb)}${cell(cc.checks.yahoo)}</tr>`;
     }).join('');
-    return `<div class="table-scroll"><table class="mini-table">
-      <thead><tr><th></th><th>בנק ישראל (בטופס)</th><th>ECB</th><th>Yahoo</th></tr></thead>
+    return `<div class="table-scroll" tabindex="0" role="region" aria-label="בקרת שערים, ${esc(it.lot.symbol || '')} ${Core.formatDateIL(it.lot.dateSold)}"><table class="mini-table">
+      <thead><tr><th scope="col"><span class="visually-hidden">תאריך</span></th><th scope="col">בנק ישראל (בטופס)</th><th scope="col">ECB</th><th scope="col">Yahoo</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <p class="hint">בסוגריים הקטנים: הסטייה מבנק ישראל. מסומן בצהוב מעל ${Core.CHECK_THRESHOLDS.ecb}% ב‑ECB או מעל ${Core.CHECK_THRESHOLDS.yahoo}% ב‑Yahoo.</p>`;
   }
@@ -359,6 +384,11 @@
   // ------------------------------------------------------------ "what if" stock chart (src/js/whatif.js)
 
   const whatIfState = new Map(); // lot id -> moved dates, kept while the page is open
+  const openMore = new Set(); // "<lot id>:wi" / "<lot id>:rates": closed-by-default panel sections the user opened
+  document.addEventListener('toggle', e => {
+    const key = e.target.dataset && e.target.dataset.more;
+    if (key) { if (e.target.open) openMore.add(key); else openMore.delete(key); }
+  }, true);
 
   function mountWhatIf(it) {
     if (!window.WhatIf) return;
@@ -423,13 +453,24 @@
     return h === '1' ? `${y}-07-31` : `${+y + 1}-01-31`;
   }
 
+  // The sticky bar repeats the download button, so on a wide screen it shows only once the
+  // toolbar (which has the same button) has scrolled out of view. Phones hide the toolbar's button.
+  let stickyWanted = false, toolbarInView = true;
+  function updateSticky() {
+    const on = stickyWanted && currentView === 'report';
+    $('#sticky').hidden = !on || (toolbarInView && !narrowMq.matches);
+    document.body.classList.toggle('has-sticky', on);
+  }
+  if (window.IntersectionObserver) {
+    new IntersectionObserver(([e]) => { toolbarInView = e.isIntersecting; updateSticky(); }).observe($('#toolbar'));
+  } else toolbarInView = false;
+
   function renderHero(ok, groups, shown) {
     const hero = $('#hero');
-    const sticky = $('#sticky');
     const show = ok.length > 0;
     hero.hidden = !show;
-    sticky.hidden = !show || currentView !== 'report';
-    document.body.classList.toggle('has-sticky', show && currentView === 'report');
+    stickyWanted = show;
+    updateSticky();
     if (!show) return;
     const years = groups.filter(g => g.isYear);
     const halves = groups.filter(g => !g.isYear);
@@ -460,7 +501,7 @@
     $('#t-count').textContent = String(ok.length);
     const early = ok.filter(it => it.calc.noForm).length;
     const bad = shown - ok.length;
-    $('#t-count-sub').textContent = bad ? `ועוד ${bad} שצריך להשלים` : early ? `${early} מהן לפני תום 24 החודשים (בלי טופס)` : 'כל העסקאות תקינות';
+    $('#t-count-sub').textContent = bad ? `ועוד ${bad} שצריך להשלים` : early ? `${early} מהן לפני תום 24 החודשים (בלי טופס)` : 'כל המכירות תקינות';
 
     $('#s-net').textContent = ils(net);
     $('#s-tax').textContent = ils(tax);
@@ -470,7 +511,7 @@
 
   function renderSummary(groups) {
     const host = $('#summary');
-    if (!groups.length) { host.innerHTML = '<p class="hint">הסיכום יופיע אחרי שתהיה לפחות עסקה אחת תקינה.</p>'; return; }
+    if (!groups.length) { host.innerHTML = '<p class="hint">הסיכום יופיע אחרי שתהיה לפחות מכירה אחת תקינה.</p>'; return; }
     host.innerHTML = groups.map(g => {
       const workTaxG = g.workIls > 0 ? Core.workTax(g.workIls, profile) : 0;
       const carryText = g.key.endsWith('H2') ? 'הפסד מועבר (משנים קודמות ומינואר-יוני) ₪' : 'הפסד מועבר משנים קודמות ₪';
@@ -484,7 +525,7 @@
           <dt>הפסדים לקיזוז ₪</dt><dd>${fmt(g.losses)}</dd>
           <dt>רווח ריאלי נטו ₪</dt><dd>${fmt(g.net)}</dd>
           ${g.carryIn < 0 ? `<dt>${carryText}</dt><dd>${fmt(g.carryIn)}</dd><dt>חייב במס ₪</dt><dd>${fmt(g.taxable)}</dd>` : ''}
-          <dt>מס משוער 25% ₪</dt><dd class="big">${fmt(g.tax)}</dd>
+          <dt>מס רווח הון משוער 25% ₪</dt><dd class="big">${fmt(g.tax)}</dd>
           ${g.withheldCap > 0 ? `<dt>נוכה ע"י הנאמן (רווח הון) ₪</dt><dd>${fmt(g.withheldCap)}</dd><dt>${g.due >= 0 ? 'עוד לתשלום ₪' : 'יתרה לזכותך ₪'}</dt><dd class="big">${fmt(Math.abs(g.due))}</dd>` : ''}
           ${g.workIls > 0 ? `<dt>הכנסת עבודה (102) ₪</dt><dd>${fmt(g.workIls)}</dd><dt>מס שולי משוער ₪</dt><dd>${fmt(workTaxG)}</dd>` : ''}
           ${g.withheldWork > 0 ? `<dt>נוכה ע"י הנאמן (עבודה) ₪</dt><dd>${fmt(g.withheldWork)}</dd><dt>${workTaxG >= g.withheldWork ? 'עוד לתשלום (עבודה), לפי ההערכה ₪' : 'נוכה יותר מההערכה ₪'}</dt><dd>${fmt(Math.abs(workTaxG - g.withheldWork))}</dd>` : ''}
@@ -505,11 +546,16 @@
       if (l.dateAcquired) markers.push({ date: l.dateAcquired, type: 'buy', label: `רכישה: ${name}` });
       if (l.dateSold) markers.push({ date: l.dateSold, type: 'sell', label: `מכירה: ${name}` });
     }
+    // The range starts 3 months before the earliest purchase or grant shown (all the data when there is none).
+    const starts = lots.filter(l => yearFilter === 'all' || yearOf(l) === yearFilter).flatMap(l => [l.dateAcquired, l.grantDate]).filter(Boolean).sort();
+    const from = starts.length ? Core.addDays(starts[0], -91) : '';
     // Redraw only when the markers or the width changed (the width is 0 while the tab is hidden).
-    const sig = JSON.stringify([markers, $('#chart').clientWidth]);
+    const sig = JSON.stringify([markers, from, $('#chart').clientWidth]);
     if (sig === chartSig) return;
     chartSig = sig;
-    window.RateChart.renderRateChart($('#chart'), RATES, markers, $('#tooltip'));
+    window.RateChart.renderRateChart($('#chart'), RATES, markers, $('#tooltip'), { from });
+    const firstDate = Object.keys(RATES).filter(d => d >= from).sort()[0];
+    $('#chart-title').textContent = firstDate ? `שער הדולר היציג מ‑${Core.formatDateIL(firstDate)}` : 'שער הדולר היציג';
     const meta = window.USD_ILS_RATES;
     const stocks = Object.keys(PRICES).map(sym => { const c = Core.lastClose(PRICES[sym]); return c ? `${sym} עד ${Core.formatDateIL(c.date)}` : ''; }).filter(Boolean);
     $('#rates-meta').textContent = meta
@@ -529,7 +575,7 @@
     const lot = id ? lots.find(l => l.id === id) : { ...blankLot(), ...(prefill || {}) };
     editingId = id || null;
     editingKey = id ? Core.lotKey(lot) : 'new';
-    $('#lot-dialog-title').textContent = id ? 'עריכת עסקה' : 'עסקה חדשה';
+    $('#lot-dialog-title').textContent = id ? 'עריכת מכירה' : 'מכירה חדשה';
     setPlanOptions(F('planType'), lot.planType);
     for (const k of ['symbol', 'planType', 'dateAcquired', 'dateSold', 'timeSold', 'rateBuy', 'rateSell', 'grantDate', 'avg30', 'offerStart', 'discountPct']) F(k).value = lot[k] ?? '';
     for (const k of ['qty', 'proceedsUsd', 'costUsd', 'feesUsd', 'paidUsd', 'withheldIls', 'withheldCapIls', 'offerFmv']) F(k).value = isFinite(lot[k]) ? lot[k] : '';
@@ -694,7 +740,7 @@
     dlg.close();
     render();
     focusLot(savedId, 'edit');
-    toast(editingId ? 'העסקה עודכנה' : 'העסקה נוספה');
+    toast(editingId ? 'המכירה עודכנה' : 'המכירה נוספה');
   }
 
   function bindEditor() {
@@ -722,7 +768,7 @@
       if (time) { F('timeSold').value = time; parts.push(`שעה ${time}`); }
       $('#f-paste-note').textContent = parts.length ? `זוהו: ${parts.join(', ')}` : e.target.value ? 'לא זוהו תאריך או שעה בטקסט' : '';
     });
-    for (const d of [dlg, $('#preview-dialog')]) bindDialogClose(d);
+    for (const d of [dlg, $('#preview-dialog'), $('#details-dialog')]) bindDialogClose(d);
   }
 
   // ------------------------------------------------------------ lot actions
@@ -737,7 +783,7 @@
     const visible = visibleItems().map(it => it.lot.id);
     const next = visible.find(v => lots.findIndex(l => l.id === v) >= idx) ?? visible[visible.length - 1];
     if (next !== undefined) focusLot(next, 'delete'); else $('#lots-title').focus();
-    toast(`העסקה ${removed.symbol || ''} נמחקה`.replace('  ', ' '), { label: 'ביטול', run: () => { lots.splice(idx, 0, removed); render(); focusLot(removed.id, 'edit'); } });
+    toast(`המכירה ${removed.symbol || ''} נמחקה`.replace('  ', ' '), { label: 'ביטול', run: () => { lots.splice(idx, 0, removed); render(); focusLot(removed.id, 'edit'); } });
   }
 
   /** Move focus to a lot's action button in whichever layout (table or cards) is visible. */
@@ -826,7 +872,7 @@
         const res = Core.parseEtradeRows(rows);
         if (res.lots.length > best.lots.length) best = res;
       }
-      if (!best.lots.length) { setMsg(msg, `לא יובאו עסקאות. ${best.warnings.join(' · ')}`, 'err'); return; }
+      if (!best.lots.length) { setMsg(msg, `לא יובאו מכירות. ${best.warnings.join(' · ')}`, 'err'); return; }
       const { merged, added, skipped } = Core.mergeLots(lots, best.lots.map(l => ({ ...blankLot(), ...l, sec102: null })));
       if (!added) { setMsg(msg, `כל ${skipped === 1 ? 'המכירה' : `${skipped} המכירות`} בקובץ ${file.name} כבר ברשימה, ולכן לא נוסף דבר.`, 'warn'); return; }
       lots = merged;
@@ -875,7 +921,7 @@
       </article>`).join('');
     const count = found.length;
     $('#doc-add').hidden = !count;
-    $('#doc-add').textContent = count === 1 ? 'הוספת העסקה' : `הוספת ${count} עסקאות`;
+    $('#doc-add').textContent = count === 1 ? 'הוספת המכירה' : `הוספת ${count} מכירות`;
     $('#doc-manual').hidden = !!count;
   }
 
@@ -910,12 +956,12 @@
         docState.hints = Core.parseSaleHints(parsed.text);
         const h = docState.hints;
         const got = [h.dateSold && `תאריך ${Core.formatDateIL(h.dateSold)}`, isFinite(h.qty) && `כמות ${h.qty}`, isFinite(h.proceedsUsd) && `תמורה ${usd(h.proceedsUsd)}$`].filter(Boolean);
-        docStatus(`לא נמצאה במסמך טבלת Gains & Losses.${got.length ? ` זוהו: ${got.join(', ')}. אפשר לפתוח עסקה חדשה עם הנתונים האלה ולהשלים את השאר.` : ' אפשר להוסיף את העסקה ידנית.'}`, 'warn');
+        docStatus(`לא נמצאה במסמך טבלת Gains & Losses.${got.length ? ` זוהו: ${got.join(', ')}. אפשר לפתוח מכירה חדשה עם הנתונים האלה ולהשלים את השאר.` : ' אפשר להוסיף את המכירה ידנית.'}`, 'warn');
       }
       renderDocLots();
     } catch (e) {
       if (!e.userMessage) console.error(e); // expected problems (an unreadable image) are explained in the dialog
-      docStatus(e.userMessage || 'קריאת המסמך נכשלה. אפשר לנסות שוב, או להוסיף את העסקה ידנית.', 'err');
+      docStatus(e.userMessage || 'קריאת המסמך נכשלה. אפשר לנסות שוב, או להוסיף את המכירה ידנית.', 'err');
       $('#doc-manual').hidden = false;
     }
   }
@@ -939,13 +985,13 @@
     if (!added.length) return;
     const name = docState.file.name;
     const res = Core.mergeLots(lots, added);
-    if (!res.added) { setMsg($('#import-msg'), `העסקאות מהקובץ ${name} כבר ברשימה, ולכן לא נוסף דבר.`, 'warn'); return; }
+    if (!res.added) { setMsg($('#import-msg'), `המכירות מהקובץ ${name} כבר ברשימה, ולכן לא נוסף דבר.`, 'warn'); return; }
     const fresh = res.merged.slice(lots.length);
     lots = res.merged;
     lastImport = { name, buf: docState.buf };
     yearFilter = 'all';
     render();
-    setMsg($('#import-msg'), `נוספו ${res.added === 1 ? 'עסקה אחת' : `${res.added} עסקאות`} מהקובץ ${name}.${dupNote(res.skipped)} הנתונים זוהו אוטומטית, אז כדאי לעבור על "הצגת החישוב".`, res.skipped ? 'warn' : 'ok');
+    setMsg($('#import-msg'), `נוספו ${res.added === 1 ? 'מכירה אחת' : `${res.added} מכירות`} מהקובץ ${name}.${dupNote(res.skipped)} הנתונים זוהו אוטומטית, אז כדאי לעבור על "הצגת החישוב".`, res.skipped ? 'warn' : 'ok');
     focusLot(fresh[0].id, 'edit');
   }
 
@@ -1066,12 +1112,12 @@
   const formsText = n => (n === 1 ? 'טופס 1399 אחד' : `${n} טפסי 1399`);
 
   function renderExportScope(ok, bad) {
-    const scope = yearFilter === 'all' ? 'כל העסקאות' : `העסקאות של ${yearFilter}`;
+    const scope = yearFilter === 'all' ? 'כל המכירות' : `המכירות של ${yearFilter}`;
     const forms = formItems(ok).length;
     const early = ok.length - forms;
     $('#export-scope').textContent = forms
-      ? `ההורדה תכלול את ${scope}: ${formsText(forms)} ודף סיכום.${bad ? ` ${bad === 1 ? 'עסקה אחת' : `${bad} עסקאות`} עם נתונים חסרים לא ${bad === 1 ? 'תיכלל' : 'ייכללו'}.` : ''}${early ? ` ${early === 1 ? 'מכירה אחת' : `${early} מכירות`} לפני תום 24 החודשים במסלול 102 ${early === 1 ? 'מופיעה' : 'מופיעות'} רק ב‑Excel, כי אין בהן רווח הון.` : ''}`
-      : ok.length ? 'אין מכירות עם רווח הון לטופס 1399. כל המכירות הן לפני תום 24 החודשים במסלול 102, והן מופיעות ב‑Excel.' : 'אין עדיין עסקאות תקינות להורדה.';
+      ? `ההורדה תכלול את ${scope}: ${formsText(forms)} ודף סיכום.${bad ? ` ${bad === 1 ? 'מכירה אחת' : `${bad} מכירות`} עם נתונים חסרים לא ${bad === 1 ? 'תיכלל' : 'ייכללו'}.` : ''}${early ? ` ${early === 1 ? 'מכירה אחת' : `${early} מכירות`} לפני תום 24 החודשים במסלול 102 ${early === 1 ? 'מופיעה' : 'מופיעות'} רק ב‑Excel, כי אין בהן רווח הון.` : ''}`
+      : ok.length ? 'אין מכירות עם רווח הון לטופס 1399. כל המכירות הן לפני תום 24 החודשים במסלול 102, והן מופיעות ב‑Excel.' : 'אין עדיין מכירות תקינות להורדה.';
   }
 
   async function fetchBytes(url) {
@@ -1093,7 +1139,7 @@
   function exportReady() {
     const ok = visibleItems().filter(it => it.calc.ok);
     const msg = $('#export-msg');
-    if (!ok.length) { setMsg(msg, 'אין עסקאות תקינות להורדה. השלם את העסקאות המסומנות ב‑⚠.', 'err'); return null; }
+    if (!ok.length) { setMsg(msg, 'אין מכירות תקינות להורדה. השלם את המכירות המסומנות ב‑⚠.', 'err'); return null; }
     if (!validateId(false)) {
       scrollToEl($('#export'));
       $('#p-id').focus();
@@ -1117,10 +1163,62 @@
     try { return await fn(); } finally { btns.forEach(b => { b.disabled = false; }); }
   }
 
+  /**
+   * Ask for the name and ID number in a small dialog when one is missing.
+   * Resolves true to go on with the download (with or without them), false when closed.
+   */
+  let detailsSkipped = false; // "download without the details" once: do not ask again in this visit
+  function askDetails() {
+    if ((profile.name && profile.idNumber) || detailsSkipped) return Promise.resolve(true);
+    const d = $('#details-dialog');
+    const name = $('#d-name'), id = $('#d-id'), err = $('#d-id-err');
+    name.value = profile.name || '';
+    id.value = profile.idNumber || '';
+    err.textContent = '';
+    id.setAttribute('aria-invalid', 'false');
+    const idError = () => {
+      const v = id.value.trim();
+      return v && !/^\d+$/.test(v) ? 'מספר זהות מכיל ספרות בלבד'
+        : v && !Core.isValidIsraeliId(v) ? 'ספרת הביקורת לא מתאימה למספר. כדאי לבדוק את כל 9 הספרות.' : '';
+    };
+    const showErr = () => { const e = idError(); err.textContent = e; id.setAttribute('aria-invalid', String(!!e)); return !e; };
+    return new Promise(resolve => {
+      let result = false;
+      const onBlur = () => showErr();
+      const onInput = () => { if (id.getAttribute('aria-invalid') === 'true') showErr(); };
+      const onSubmit = e => {
+        e.preventDefault();
+        if (!showErr()) { id.focus(); return; }
+        profile.name = name.value.trim();
+        profile.idNumber = id.value.trim();
+        $('#p-name').value = profile.name;
+        $('#p-id').value = profile.idNumber;
+        validateId(false);
+        persist();
+        result = true;
+        d.close();
+      };
+      const onSkip = () => { result = true; detailsSkipped = true; d.close(); };
+      const onClose = () => {
+        id.removeEventListener('blur', onBlur); id.removeEventListener('input', onInput);
+        $('#details-form').removeEventListener('submit', onSubmit); $('#details-skip').removeEventListener('click', onSkip);
+        resolve(result);
+      };
+      id.addEventListener('blur', onBlur);
+      id.addEventListener('input', onInput);
+      $('#details-form').addEventListener('submit', onSubmit);
+      $('#details-skip').addEventListener('click', onSkip);
+      d.addEventListener('close', onClose, { once: true });
+      d.showModal();
+      (profile.name ? id : name).focus();
+    });
+  }
+
   async function onPdf() {
     const ok = exportReady();
     if (!ok) return;
     if (!formItems(ok).length) { setMsg($('#export-msg'), 'אין מכירות עם רווח הון לטופס 1399. אפשר להוריד את ה‑Excel.', 'warn'); return; }
+    if (!(await askDetails())) return;
     const msg = $('#export-msg');
     await withBusy([$('#dl-pdf'), $('#s-dl'), $('#preview-dl')], async () => {
       try {
@@ -1129,7 +1227,7 @@
         try { bytes = await buildPdfBytes(ok); } finally { clearTimeout(t); }
         download(bytes, `form-1399-${fileYear(ok)}.pdf`, 'application/pdf');
         setMsg(msg, `ירד PDF עם ${formsText(formItems(ok).length)} ודף סיכום.`, 'ok');
-        if (!profile.idNumber) toast('הטופס ירד בלי מספר זהות. אפשר למלא אותו בשלב 4.');
+        if (!profile.idNumber) toast('הטופס ירד בלי מספר זהות. אפשר להוסיף אותו בשלב 4 ולהוריד שוב.');
       } catch (e) {
         console.error(e);
         const text = location.protocol === 'file:'
@@ -1207,7 +1305,7 @@
     const sums = summaryFor(ok).map(g => ({
       'תקופה': g.label, 'מכירות': g.count, 'תמורה ₪': g.proceedsIls, 'רווחים ריאליים ₪': g.gains,
       'הפסדים לקיזוז ₪': g.losses, 'רווח ריאלי נטו ₪': g.net, 'הפסד מועבר ₪': g.carryIn, 'חייב במס ₪': g.taxable,
-      'מס משוער 25% ₪': g.tax, 'נוכה ע"י הנאמן, רווח הון ₪': g.withheldCap, 'עוד לתשלום ₪': g.due, 'הפסד להעברה ₪': g.carryLoss,
+      'מס רווח הון משוער 25% ₪': g.tax, 'נוכה ע"י הנאמן, רווח הון ₪': g.withheldCap, 'עוד לתשלום ₪': g.due, 'הפסד להעברה ₪': g.carryLoss,
       'הכנסת עבודה 102 ₪': g.workIls, 'מס שולי משוער ₪': Core.workTax(g.workIls, profile), 'נוכה ע"י הנאמן, עבודה ₪': g.withheldWork,
     }));
     const checks = [];
@@ -1224,7 +1322,7 @@
       }
     }
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'עסקאות');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'מכירות');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sums), 'סיכום');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(checks), 'בקרת שערים');
     wb.Workbook = { Views: [{ RTL: true }] };
@@ -1234,11 +1332,11 @@
   // ------------------------------------------------------------ backup / restore
 
   function downloadBackup() {
-    if (!lots.length && !simHoldings().length) { toast('אין עדיין עסקאות לגבות.'); return; }
+    if (!lots.length && !simHoldings().length) { toast('אין עדיין מכירות לגבות.'); return; }
     const data = Core.makeBackup(profile, lots, new Date(), simHoldings());
     download(JSON.stringify(data, null, 2), `1399-backup-${today()}.json`, 'application/json');
     const nh = simHoldings().length;
-    toast(`נשמר גיבוי של ${lots.length === 1 ? 'עסקה אחת' : `${lots.length} עסקאות`}${nh ? ` ו‑${nh === 1 ? 'מנה אחת' : `${nh} מנות`} מהסימולטור` : ''}. מספר הזהות לא נכלל בגיבוי.`);
+    toast(`נשמר גיבוי של ${lots.length === 1 ? 'מכירה אחת' : `${lots.length} מכירות`}${nh ? ` ו‑${nh === 1 ? 'מנה אחת' : `${nh} מנות`} מהסימולטור` : ''}. מספר הזהות לא נכלל בגיבוי.`);
   }
 
   let pendingRestore = null;
@@ -1257,14 +1355,14 @@
       lots = fresh;
       Object.assign(profile, data.profile);
       if (window.Sim) window.Sim.setHoldings(data.holdings); // "replace" replaces the simulator list too
-      text = `נטענו ${fresh.length} עסקאות מהגיבוי, והרשימה הקודמת הוחלפה.`;
+      text = `נטענו ${fresh.length} מכירות מהגיבוי, והרשימה הקודמת הוחלפה.`;
     } else {
       const r = Core.mergeLots(lots, fresh);
       lots = r.merged;
       if (data.holdings.length && window.Sim) window.Sim.setHoldings(beforeHoldings.concat(data.holdings));
       // Fill only empty details; false and 0 are real choices, not empty.
       for (const [k, v] of Object.entries(data.profile)) if (profile[k] === undefined || profile[k] === '' || (k === 'priorLoss' && !profile[k])) profile[k] = v;
-      text = `נוספו ${r.added} עסקאות מהגיבוי${r.skipped ? `, ו‑${r.skipped} כפולות דולגו` : ''}.`;
+      text = `נוספו ${r.added} מכירות מהגיבוי${r.skipped ? `, ו‑${r.skipped} כפולות דולגו` : ''}.`;
     }
     yearFilter = 'all';
     openPanels.clear();
@@ -1287,7 +1385,7 @@
     setMsg(msg, '', '');
     if (!lots.length && !simHoldings().length) { applyRestore('replace'); return; }
     const n = pendingRestore.lots.length;
-    $('#restore-body').textContent = `בקובץ הגיבוי ${n === 1 ? 'עסקה אחת' : `${n} עסקאות`}, וברשימה כרגע ${lots.length === 1 ? 'עסקה אחת' : `${lots.length} עסקאות`}. אפשר להחליף את הרשימה בגיבוי, או להוסיף את עסקאות הגיבוי לרשימה (כפולות ידולגו).`;
+    $('#restore-body').textContent = `בקובץ הגיבוי ${n === 1 ? 'מכירה אחת' : `${n} מכירות`}, וברשימה כרגע ${lots.length === 1 ? 'מכירה אחת' : `${lots.length} מכירות`}. אפשר להחליף את הרשימה בגיבוי, או להוסיף את מכירות הגיבוי לרשימה (כפולות ידולגו).`;
     $('#restore-dialog').showModal();
     $('#restore-cancel').focus();
   }
@@ -1302,12 +1400,12 @@
     lines.push(`נוצר: ${Core.formatDateIL(today())} · מחולל טופס 1399 · https://tamirgabgab.github.io/espp-and-rsu-report-generator/`);
     if (profile.name) lines.push(`שם: ${profile.name}`);
     const sales = n => (n === 1 ? 'מכירה אחת' : `${n} מכירות`);
-    lines.push(`היקף: ${yearFilter === 'all' ? 'כל העסקאות' : `שנת ${yearFilter}`} · ${sales(ok.length)} (lots)`);
+    lines.push(`היקף: ${yearFilter === 'all' ? 'כל המכירות' : `שנת ${yearFilter}`} · ${sales(ok.length)}`);
     lines.push('');
     lines.push('סיכום');
     lines.push('-----');
     for (const g of groups) {
-      lines.push(`${g.label}: ${sales(g.count)} · רווח ריאלי נטו ${fmt(g.net)} ₪${g.carryIn < 0 ? ` · הפסד מועבר ${fmt(g.carryIn)} ₪` : ''} · מס משוער 25%: ${fmt(g.tax)} ₪${g.withheldCap > 0 ? ` · נוכה ע"י הנאמן ${fmt(g.withheldCap)} ₪` : ''}${g.isYear ? (g.carryLoss < 0 ? ` · הפסד להעברה ${fmt(g.carryLoss)} ₪` : '') : ` · מקדמה עד ${Core.formatDateIL(dueDate(g.key))}`}`);
+      lines.push(`${g.label}: ${sales(g.count)} · רווח ריאלי נטו ${fmt(g.net)} ₪${g.carryIn < 0 ? ` · הפסד מועבר ${fmt(g.carryIn)} ₪` : ''} · מס רווח הון משוער 25%: ${fmt(g.tax)} ₪${g.withheldCap > 0 ? ` · נוכה ע"י הנאמן ${fmt(g.withheldCap)} ₪` : ''}${g.isYear ? (g.carryLoss < 0 ? ` · הפסד להעברה ${fmt(g.carryLoss)} ₪` : '') : ` · מקדמה עד ${Core.formatDateIL(dueDate(g.key))}`}`);
     }
     lines.push('');
     lines.push('פירוט המכירות');
@@ -1470,6 +1568,7 @@
   /** Redraw the view on screen; the others redraw when they are shown. */
   function renderCurrent() {
     if (currentView === 'report') render(); else persist();
+    updateSticky();
     if (currentView === 'sim' && window.Sim) window.Sim.render();
     if (currentView === 'formulas' && window.Formulas) window.Formulas.render();
   }
@@ -1560,18 +1659,18 @@
     $('#clear-all').addEventListener('click', () => {
       if (!lots.length) return;
       const n = lots.length;
-      const what = n === 1 ? 'העסקה' : `כל ${n} העסקאות`;
+      const what = n === 1 ? 'המכירה' : `כל ${n} המכירות`;
       confirmDestructive({
         title: `למחוק את ${what}?`,
-        body: `הפעולה מוחקת ${n === 1 ? 'עסקה אחת' : `${n} עסקאות`} מהרשימה בדפדפן הזה. אחרי המחיקה אפשר לבטל אותה לכמה שניות.`,
-        ok: n === 1 ? 'מחיקת העסקה' : `מחיקת ${n} עסקאות`,
+        body: `הפעולה מוחקת ${n === 1 ? 'מכירה אחת' : `${n} מכירות`} מהרשימה בדפדפן הזה. אחרי המחיקה אפשר לבטל אותה לכמה שניות.`,
+        ok: n === 1 ? 'מחיקת המכירה' : `מחיקת ${n} מכירות`,
         run: () => {
           const backup = lots.slice();
           lots = [];
           openPanels.clear();
           render();
           $('#lots-title').focus();
-          toast(`נמחקו ${backup.length === 1 ? 'עסקה אחת' : `${backup.length} עסקאות`}`, { label: 'ביטול', run: () => { lots = backup; render(); } });
+          toast(`נמחקו ${backup.length === 1 ? 'מכירה אחת' : `${backup.length} מכירות`}`, { label: 'ביטול', run: () => { lots = backup; render(); } });
         },
       });
     });
