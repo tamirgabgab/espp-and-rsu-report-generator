@@ -553,43 +553,40 @@ test('what if: moving an RSU grant moves the 30-day average (L12)', () => {
   assert.equal(Core.whatIfLots(rsu, { offerStart: '', buyDate: rsu.dateAcquired, saleDate: rsu.dateSold, grantDate: rsu.grantDate }, PX).variants.length, 0);
 });
 
-// ---------------------------------------------------------------- ESPP 102: lower of offering start and purchase
+// ---------------------------------------------------------------- ESPP 102: lookback sets the price paid
 
-test('ESPP under 102: benefit value is the lower of the offering-start and purchase prices', () => {
-  // Close at the offering start (100) is below the purchase-date FMV (120): the lookback value wins.
-  const b = Core.esppBenefit(wlot, P);
-  assert.equal(b.source, 'lookback');
-  assert.equal(b.s0Source, 'close');
-  assert.equal(b.perShare, 100);
+test('ESPP under 102: the work income is the purchase-date price minus the lookback price paid', () => {
+  // Offering start 100, purchase 120: the plan price is 85% of 100 = 85 a share.
+  const l = Core.esppLookback(wlot, P);
+  assert.equal(l.s0Source, 'close');
+  assert.equal(l.planPrice, 85);
   const c = Core.computeLot102(wlot, R2, {}, { prices: P });
-  assert.equal(c.baseUsd, 1000);
-  assert.equal(c.workUsd, 150); // 15% of 100 x 10
-  assert.equal(c.capCostUsd, 1000);
-  // E*Trade's Grant Date FMV comes first.
-  const e = Core.esppBenefit({ ...wlot, offerFmv: 98.5 }, P);
-  assert.equal(e.s0Source, 'etrade');
-  assert.equal(e.perShare, 98.5);
-  // The purchase price is lower: it is the value, and E*Trade's total is kept to the cent.
-  const up = Core.computeLot102({ ...wlot, offerFmv: 130, costUsd: 1200.04 }, R2, {}, { prices: P });
-  assert.equal(up.baseSource, 'lookback');
-  assert.equal(up.baseUsd, 1200.04);
-  // A value from the trustee's report still overrides.
-  assert.equal(Core.computeLot102({ ...wlot, avg30: '110' }, R2, {}, { prices: P }).baseSource, 'manual');
+  assert.equal(c.baseSource, 'cost');
+  assert.equal(c.baseUsd, 1200); // the value is the purchase-date price
+  assert.equal(c.workUsd, 350); // (120 - 85) x 10, the lookback rise included
+  assert.equal(c.capCostUsd, 1200);
+  assert.equal(c.paidSource, 'typed');
+  assert.equal(c.espp.mismatch, false);
+  // E*Trade's Grant Date FMV comes first, and the purchase price can be the lower one.
+  assert.equal(Core.esppLookback({ ...wlot, offerFmv: 98 }, P).planPrice, 83.3);
+  assert.equal(Core.esppLookback({ ...wlot, offerFmv: 130 }, P).planPrice, 102);
+  assert.equal(Core.esppLookback({ ...wlot, offerFmv: 100, discountPct: '10' }, P).planPrice, 90);
+  // A value from the trustee's report still overrides the value.
+  assert.equal(Core.computeLot102({ ...wlot, avg30: '110' }, R2, {}, { prices: P }).workUsd, 250);
 });
 
-test('ESPP under 102: no offering start - derived from the price paid, else the purchase price', () => {
-  const noStart = { ...wlot, offerStart: '' };
-  const d = Core.esppBenefit({ ...noStart, discountPct: '15' }, P);
-  assert.equal(d.source, 'derived');
-  assert.equal(d.perShare, 100); // 85 / 0.85
-  // Never above the purchase-date price.
-  assert.equal(Core.esppBenefit({ ...noStart, discountPct: '15', paidUsd: 1100 }, P).perShare, 120);
-  const c = Core.esppBenefit(noStart, P);
-  assert.equal(c.source, 'cost');
-  assert.equal(c.perShare, 120);
-  // Without price data the offering start cannot be priced either.
-  assert.equal(Core.esppBenefit(wlot, {}).source, 'cost');
-  assert.equal(Core.computeLot102(noStart, R2, {}, { prices: P }).baseUsd, 1200);
+test('ESPP under 102: a missing price paid is computed from the lookback, and a far-off one is flagged', () => {
+  const c = Core.computeLot102({ ...wlot, paidUsd: NaN }, R2, {}, { prices: P });
+  assert.equal(c.paidSource, 'lookback');
+  assert.equal(c.paidUsd, 850);
+  assert.equal(c.workUsd, 350);
+  const e = Core.evaluateLot({ ...wlot, paidUsd: NaN }, { rates: R2, prices: P, is102: true, settings: {} });
+  assert.equal(e.paidIls, Core.roundILS(850 * 3.635));
+  // No offering start: nothing to compute, as before.
+  const n = Core.computeLot102({ ...wlot, paidUsd: NaN, offerStart: '' }, R2, {}, { prices: P });
+  assert.equal(n.paidSource, 'none');
+  assert.equal(n.workUsd, 0);
+  assert.equal(Core.computeLot102({ ...wlot, paidUsd: 1000 }, R2, {}, { prices: P }).espp.mismatch, true);
 });
 
 test('ESPP Grant Date FMV is read from G&L and kept by cleanLot', () => {
@@ -604,11 +601,12 @@ test('ESPP Grant Date FMV is read from G&L and kept by cleanLot', () => {
   assert.equal(Core.cleanLot({ ...lots[0] }).offerFmv, 98.5);
 });
 
-test('what if: a moved offering start re-prices the ESPP benefit value', () => {
+test('what if: a moved offering start moves the lookback price', () => {
   const s = Core.whatIfLots({ ...wlot, offerFmv: 100 }, { offerStart: '2024-02-01', buyDate: wlot.dateAcquired, saleDate: wlot.dateSold }, P);
   assert.equal(s.moved.offer, true);
   const v = s.variants[0].lot;
   assert.equal(v.offerStart, '2024-02-01');
   assert.equal(v.offerFmv, 90); // 100 x 90 / 100
-  assert.equal(Core.esppBenefit(v, P).perShare, 90);
+  assert.equal(v.paidUsd, 765); // 85% of 90, x 10
+  assert.equal(Core.esppLookback(v, P).planPrice, 76.5);
 });

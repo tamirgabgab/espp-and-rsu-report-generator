@@ -532,14 +532,15 @@ Decisions taken with the owner:
   The owner's trustee report splits the two, so no "single total" field was
   added; if one is ever needed, split it work first (the marginal-tax estimate),
   the rest to the capital gain.
-- **L5 (revised later the same day):** ESPP 102 value per share = the lower of
-  the price at the offering start and on the purchase date (`Core.esppBenefit`).
-  E*Trade's figures first (Grant Date FMV in the new lot field `offerFmv`,
-  purchase FMV from the cost), closing prices as a fallback; with no offering
-  start it is derived from the price paid and a typed discount, else the
-  purchase price. The optional `avg30` field is "benefit value per share" from
-  the trustee's report and overrides. No real trustee report was available to
-  compare.
+- **L5 (clarified by the owner later the same day):** ESPP 102 value = the
+  market price on the purchase date (`S1`). The lookback, `(1 − discount) ×
+  min(S0, S1)`, is the price paid; the work income is `S1` minus the price
+  paid. `Core.esppLookback` computes the plan price from E*Trade's figures
+  first (Grant Date FMV in the new lot field `offerFmv`, purchase FMV from the
+  cost) and closing prices as a fallback. It fills a missing price paid and
+  flags a typed one that differs by more than 1%. The optional `avg30` field is
+  "benefit value per share" from the trustee's report and overrides the value.
+  No real trustee report was available to compare.
 - **L6:** default 35% + 12% national insurance (new users only; a saved profile
   keeps 47%).
 - **L7:** a January–June loss reduces the July–December advance.

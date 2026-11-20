@@ -65,7 +65,7 @@
     const esppAvg = st.plan === 'ESPP';
     $('#fx-avg-label').textContent = esppAvg ? 'שווי ההטבה למניה ($, לא חובה)' : 'ממוצע 30 ימי מסחר לפני ההענקה ($ למניה)';
     $('#fx-avg').placeholder = esppAvg ? '' : d.avgAuto ? `אוטומטי: ${d.avgAuto.avg}` : '';
-    $('#fx-avg-note').textContent = esppAvg ? 'הנמוך מבין מחיר השוק בתחילת תקופת ההצעה וביום הרכישה, או השווי מדוח הנאמן. ריק = מחיר יום הרכישה.'
+    $('#fx-avg-note').textContent = esppAvg ? 'רק אם בדוח הנאמן מופיע שווי אחר. ריק = מחיר השוק ביום הרכישה.'
       : d.avgAuto ? `מ‑${D(d.avgAuto.from)} עד ${D(d.avgAuto.to)}. משאירים ריק כדי להשתמש בו.` : 'מזינים תאריך הענקה, או מקלידים את הממוצע מדוח הנאמן.';
     const last = Core.lastClose(d.prices);
     $('#fx-price-note').textContent = last ? `סגירה אחרונה של ${st.symbol}: ${last.price} ב‑${D(last.date)}.` : '';
@@ -161,7 +161,7 @@
       html += `<h3>שלב 1: הכנסת עבודה, במס שולי (הנאמן מנכה במכירה)</h3><ol class="steps">
         ${c.early
           ? step('הכנסת עבודה: כל הרווח', 'W = P − F − Cp', `${money(r.P)} − ${money(r.F)} − ${money(r.Cp)} = ${money(c.workUsd)} $`, `המכירה לפני ${D(c.unlock)}, תום 24 החודשים מההקצאה (${D(c.alloc)}). לכן כל הרווח הוא הכנסת עבודה.`)
-          : step('הכנסת עבודה', 'W = min(V, P − F) − Cp', `min(${money(r.V)}, ${money(r.P - r.F)}) − ${money(r.Cp)} = ${money(c.workUsd)} $`, st.plan === 'RSU' ? 'ב‑RSU: ממוצע 30 ימי המסחר שלפני ההענקה.' : 'ב‑ESPP: ההנחה, כלומר הנמוך מבין מחיר השוק בתחילת ההצעה וביום הרכישה, פחות מה ששילמת.')}
+          : step('הכנסת עבודה', 'W = min(V, P − F) − Cp', `min(${money(r.V)}, ${money(r.P - r.F)}) − ${money(r.Cp)} = ${money(c.workUsd)} $`, st.plan === 'RSU' ? 'ב‑RSU: ממוצע 30 ימי המסחר שלפני ההענקה.' : 'ב‑ESPP: מחיר השוק ביום הרכישה פחות מה ששילמת. עם Lookback שילמת 85% מהנמוך מבין תחילת ההצעה ויום הרכישה, ולכן ההפרש כולל גם את העלייה בתקופת ההצעה.')}
         ${step('בשקלים', 'W₪ = W × Rs', `${money(c.workUsd)} × ${rs} = ${num(r.workIls)} ₪`, 'בשער של יום המכירה, כמו בניכוי של הנאמן.')}
         ${step('מס שולי משוער', `W₪ × ${rate()}%`, `${num(r.workIls)} × ${rate()}% = ${num(r.workTax)} ₪`, `${+App.profile.marginalRate || 0}% מס שולי${App.profile.includeNi ? ` ועוד ${+App.profile.niRate || 0}% ביטוח לאומי ובריאות` : ''}. הערכה בלבד.`, 'result')}
       </ol>`;
@@ -207,7 +207,7 @@
       <p>הסימנים: ${L('P')} תמורה, ${L('F')} עמלות, ${L('V')} שווי ההטבה, ${L('Cp')} מה ששילמת (בדולרים), ${L('Rb')} ו‑${L('Rs')} השער היציג ביום הרכישה, ההבשלה או ההקצאה, וביום המכירה. ${L('m')} הוא שיעור המס השולי, כולל ביטוח לאומי ובריאות אם רלוונטי.</p>
       <p>רווח ההון מחושב תמיד באותה דרך, לפי חוזר 10/2025: ${L('A = (P − C − F) × Rs')}, ${L('B = P×Rs − C×Rb − F×Rs')}, ואז רווח ריאלי = ${L('min(A, B)')} כששניהם רווח, ${L('max(A, B)')} כששניהם הפסד, ו‑0 אחרת. המס הוא 25% אחרי קיזוז הפסדים. מה שמשתנה בין המקרים הוא ההגדרה של ${L('V')}, של העלות ${L('C')} ושל התאריך של ${L('Rb')}.</p>
       <h3>‏ESPP, סעיף 102 עם נאמן</h3>
-      ${f([`שווי ההטבה: ${L('V = min(FMV(offer start), FMV(purchase)) × qty')}`, `ששולם: ${L('Cp = purchase price × qty')}`, `הכנסת עבודה: ${L('W = min(V, P − F) − Cp')}`, `מס שולי: ${L('Tax_w = W × Rs × m')}`, `עלות לרווח ההון: ${L('C = Cp + W')}, בשער של יום הרכישה (ההקצאה)`, 'מכירה לפני 24 חודשים: כל הרווח הכנסת עבודה, ואין רווח הון'])}
+      ${f([`שווי ההטבה: ${L('V = FMV(purchase) × qty')}`, `ששולם: ${L('Cp = (1 − d) × min(FMV(offer start), FMV(purchase)) × qty')}`, `הכנסת עבודה: ${L('W = min(V, P − F) − Cp')}`, `מס שולי: ${L('Tax_w = W × Rs × m')}`, `עלות לרווח ההון: ${L('C = Cp + W')}, בשער של יום הרכישה (ההקצאה)`, 'מכירה לפני 24 חודשים: כל הרווח הכנסת עבודה, ואין רווח הון'])}
       <h3>‏ESPP בלי נאמן</h3>
       ${f([`הטבה במשכורת, ביום הרכישה: ${L('W₀ = V − Cp')}`, `מס במשכורת: ${L('Tax₀ ≈ W₀ × Rb × m')}`, `עלות לרווח ההון: ${L('C = V')} (Adjusted Cost Basis), בשער של יום הרכישה`])}
       <h3>‏RSU, סעיף 102 עם נאמן</h3>
@@ -262,13 +262,6 @@
     render();
   }
 
-  /** ESPP under 102: the lookback benefit value of a lot, when it differs from the purchase-date price. */
-  function esppValueOf(l) {
-    if (l.planType !== 'ESPP' || !App.sec102Of(l)) return '';
-    const b = Core.esppBenefit(l, App.PRICES);
-    return b && b.source !== 'cost' ? String(b.perShare) : '';
-  }
-
   /** Copy a report lot into the calculator. */
   function fillFromLot(l) {
       // Enough decimals that per-share × quantity gives the lot's totals back to the cent.
@@ -276,7 +269,7 @@
       st = {
         ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
         grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
-        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || esppValueOf(l), rb: l.rateBuy || '', rs: l.rateSell || '',
+        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
       };
       persist();
       render();

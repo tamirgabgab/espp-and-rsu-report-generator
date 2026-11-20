@@ -111,8 +111,8 @@ withholds it at the sale, and the gain is split in two:
 
 | Symbol | Meaning |
 |---|---|
-| `V` | Value of the benefit. **ESPP:** the lower of the market price at the start of the offering period and on the purchase date, × qty (see below), or the "benefit value per share" from the trustee's report when it is typed in the lot. **RSU:** the average closing price of the **30 trading days before the grant date** × qty. |
-| `Cp` | What you paid. ESPP: the discounted purchase price × qty (E*Trade's *Acquisition Cost*). RSU: 0. |
+| `V` | Value of the benefit. **ESPP:** the market value on the purchase date (Adjusted Cost Basis), or the "benefit value per share" from the trustee's report when it is typed in the lot. **RSU:** the average closing price of the **30 trading days before the grant date** × qty. |
+| `Cp` | What you paid. ESPP: the discounted purchase price × qty (E*Trade's *Acquisition Cost*); with a lookback, `(1 − discount) × min(S0, S1) × qty`. RSU: 0. |
 | `P`, `F` | Proceeds and fees in USD |
 | `alloc` | The allocation to the trustee: the grant date for RSU, the purchase date for ESPP |
 
@@ -148,18 +148,19 @@ Open points, which are not settled by an official source:
 - **Real or nominal.** Trustees usually compute the capital part nominally (all
   at the sale-date rate). Some accountants argue for a real computation. The
   app computes it as **real**, by the user's decision.
-- **ESPP benefit value (owner's decision, 2026-11-20).** Per share, the lower
-  of the price at the start of the offering period (`S0`) and on the purchase
-  date (`S1`), so the work income is the plan discount and a rise during the
-  offering period is capital gain. Sources, in order:
-  - `S1`: E*Trade's purchase-date FMV (Adjusted Cost Basis / qty), else the close.
-  - `S0`: E*Trade's "Grant Date FMV" (lot field `offerFmv`, read from G&L and
-    from PDF imports), else the close on the offering start date.
-  - No offering start date: `paid per share / (1 − discount)` when the discount
-    is typed in the lot (never above `S1`), else `S1`.
-  - A "benefit value per share" typed from the trustee's report overrides all.
-  The panel names the rule and the source used. Not checked against a real
-  trustee report yet.
+- **ESPP with a lookback (owner's decision, 2026-11-20).** The plan price is
+  `(1 − discount) × min(S0, S1)`: `S0` is the price at the start of the
+  offering period and `S1` the price on the purchase date. The work income is
+  `S1` minus the price paid, so it includes any rise during the offering
+  period, and the capital-gain cost is `S1`. The lookback only sets the price
+  paid:
+  - when the price paid is missing, it is computed from the lookback;
+  - when it is typed, the panel flags a difference above 1% (or 2 cents a share).
+  Sources: `S1` = E*Trade's purchase-date FMV (Adjusted Cost Basis / qty), else
+  the close; `S0` = E*Trade's "Grant Date FMV" (lot field `offerFmv`, read from
+  G&L and PDF imports), else the close on the offering start date; discount =
+  the lot's `discountPct`, else 15%. A "benefit value per share" typed from the
+  trustee's report overrides `S1` as the value.
 - **24 months:** counted from the allocation date (the grant for RSU, the
   purchase for ESPP). Check your plan's rules.
 

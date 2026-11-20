@@ -269,10 +269,11 @@
    *
    *  - Work income (marginal tax): the value at allocation minus what the
    *    employee paid, but never more than the actual gain.
-   *      ESPP: value per share = the lower of the market price at the start of
-   *            the offering period and on the purchase date (see esppBenefit),
-   *            so the work income is the discount. A per-share value typed from
-   *            the trustee's statement (field avg30) replaces it.
+   *      ESPP: value = market price on the purchase date (Adjusted Cost Basis),
+   *            so the work income is that price minus the price paid. The price
+   *            paid follows the lookback (esppLookback); when it is missing it
+   *            is computed from it. A per-share value typed from the trustee's
+   *            statement (field avg30) replaces the value.
    *      RSU:  value = average close of the 30 trading days before the grant,
    *            or the per-share value typed from the trustee's statement.
    *    Converted at the sale-date representative rate (when the trustee withholds).
@@ -285,17 +286,18 @@
    * @param {object} opts  {prices: {SYMBOL: priceFile}}
    */
   /**
-   * ESPP benefit value per share under section 102: the lower of the market
-   * price at the start of the offering period (S0) and on the purchase date (S1).
+   * ESPP purchase with a lookback: the plan price is (1 - discount) x the lower
+   * of the market price at the start of the offering period (S0) and on the
+   * purchase date (S1). The work income is S1 minus the price paid, so the
+   * lookback only sets (or checks) the price paid.
    *  - S1: E*Trade's purchase-date FMV (Adjusted Cost Basis / qty), else the close.
    *  - S0: E*Trade's "Grant Date FMV" (field offerFmv), else the close on the
-   *        offering start date.
-   *  - No offering start date or no S0: derived from the price paid,
-   *        paid / (1 - discount), when the discount is typed in the lot;
-   *        otherwise S1.
-   * @returns {{perShare, source: 'lookback'|'derived'|'cost', s0, s0Source, s1, discount}|null}
+   *        offering start date. No offering start date: no S0.
+   *  - discount: the lot's discountPct, else 15%.
+   * @returns {{s0, s0Source: 'etrade'|'close'|'', s1, discount, planPrice}|null}
+   *          planPrice: the expected price paid per share (NaN without S0).
    */
-  function esppBenefit(lot, prices) {
+  function esppLookback(lot, prices) {
     if (!(lot.qty > 0)) return null;
     const p = prices && prices[lot.symbol];
     const closeOn = iso => { const r = priceOn(p, iso); return r && r.date >= addDays(iso, -7) ? r.price : NaN; };
@@ -308,14 +310,9 @@
       if (isFinite(typed) && typed > 0) { s0 = typed; s0Source = 'etrade'; }
       else { s0 = closeOn(lot.offerStart); if (isFinite(s0)) s0Source = 'close'; }
     }
-    if (isFinite(s0)) return { perShare: round2(Math.min(s0, s1)), source: 'lookback', s0, s0Source, s1, discount: NaN };
-    const d = lot.discountPct === '' || lot.discountPct === undefined || lot.discountPct === null ? NaN : +lot.discountPct;
-    const paid = numOrNaN(lot.paidUsd);
-    if (isFinite(d) && d >= 0 && d < 100 && isFinite(paid) && paid > 0) {
-      const derived = round2(paid / lot.qty / (1 - d / 100));
-      return { perShare: Math.min(derived, s1), source: 'derived', s0: NaN, s0Source: '', s1, discount: d };
-    }
-    return { perShare: s1, source: 'cost', s0: NaN, s0Source: '', s1, discount: NaN };
+    const typedD = lot.discountPct === '' || lot.discountPct === undefined || lot.discountPct === null ? NaN : +lot.discountPct;
+    const discount = isFinite(typedD) && typedD >= 0 && typedD < 100 ? typedD : ESPP_DISCOUNT;
+    return { s0, s0Source, s1, discount, planPrice: lookbackPrice(s0, s1, discount) };
   }
 
   function computeLot102(lot, rates, overrides = {}, { prices } = {}) {
@@ -337,14 +334,11 @@
     } else {
       const manual = numOrNaN(lot.avg30);
       if (isFinite(manual) && manual > 0 && lot.qty > 0) { baseUsd = round2(manual * lot.qty); baseSource = 'manual'; }
-      else if ((espp = esppBenefit(lot, prices))) {
-        baseSource = espp.source;
-        // Keep E*Trade's total when the purchase-date price is the value, so it matches to the cent.
-        baseUsd = espp.perShare === espp.s1 && isFinite(lot.costUsd) ? lot.costUsd : round2(espp.perShare * lot.qty);
-      } else {
+      else {
         baseUsd = lot.costUsd;
         if (!isFinite(baseUsd)) issues.push('חסרה עלות בדולרים (השווי ביום הרכישה)');
       }
+      espp = esppLookback(lot, prices);
     }
     if (!lot.dateSold) issues.push('חסר תאריך מכירה');
     const sell = sideRate(overrides.rateSell, rates, lot.dateSold, 'מכירה', issues);
@@ -353,10 +347,15 @@
 
     const fees = isFinite(lot.feesUsd) ? lot.feesUsd : 0;
     const paidRaw = numOrNaN(lot.paidUsd);
-    const paidKnown = isRsu || isFinite(paidRaw);
-    const paid = isFinite(paidRaw) ? paidRaw : isRsu ? 0 : baseUsd; // unknown ESPP price: no work part
+    // Unknown ESPP price: the lookback plan price when it can be computed, else no work part.
+    const planPaid = !isRsu && !isFinite(paidRaw) && espp && isFinite(espp.planPrice) ? round2(espp.planPrice * lot.qty) : NaN;
+    const paidSource = isFinite(paidRaw) ? 'typed' : isFinite(planPaid) ? 'lookback' : isRsu ? 'rsu' : 'none';
+    const paidKnown = isRsu || paidSource !== 'none';
+    const paid = isFinite(paidRaw) ? paidRaw : isFinite(planPaid) ? planPaid : isRsu ? 0 : baseUsd;
+    // A typed price far from the lookback price (more than 1% or 2 cents a share) is worth a look.
+    if (espp) espp.mismatch = paidSource === 'typed' && isFinite(espp.planPrice) && Math.abs(paid / lot.qty - espp.planPrice) > Math.max(0.02, espp.planPrice * 0.01);
     const unlock = unlockDate(alloc);
-    const base = { track: '102', alloc, unlock, baseUsd, baseSource, avg, espp, paidUsd: paid, paidKnown };
+    const base = { track: '102', alloc, unlock, baseUsd, baseSource, avg, espp, paidUsd: paid, paidKnown, paidSource };
     const net = lot.proceedsUsd - fees;
 
     if (lot.dateSold < unlock) {
@@ -883,7 +882,7 @@
     const calc = is102 ? computeLot102(lot, rates, overrides, { prices }) : computeLot(lot, rates, overrides);
     if (!calc.ok) return { ok: false, issues: calc.issues };
     const rb = calc.buy ? calc.buy.rate : (lookupRate(rates, allocationDate(lot)) || {}).rate;
-    const paid = isFinite(lot.paidUsd) ? lot.paidUsd : lot.planType === 'RSU' ? 0 : NaN;
+    const paid = is102 && calc.paidKnown ? calc.paidUsd : isFinite(lot.paidUsd) ? lot.paidUsd : lot.planType === 'RSU' ? 0 : NaN;
     const paidIls = isFinite(paid) && isFinite(rb) ? roundILS(paid * rb) : 0;
     let workIls = 0, workTaxIls = 0, payroll = false;
     if (is102) { workIls = calc.workIls; workTaxIls = workTax(workIls, settings); }
@@ -1216,6 +1215,6 @@
     makeBackup, parseBackup, mergeLots, lotKey, cleanLot, cleanHolding, cleanProfile,
     avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
     parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, snapSymbol,
-    ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots, esppBenefit,
+    ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots, esppLookback,
   };
 });

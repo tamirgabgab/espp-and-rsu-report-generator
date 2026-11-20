@@ -250,9 +250,10 @@
     if (it.is102) {
       const vLabel = calc.baseSource === 'avg30' ? `שווי ההטבה <span class="muted">(ממוצע 30 יום: ${calc.avg.avg} × ${it.lot.qty})</span>`
         : calc.baseSource === 'manual' ? `שווי ההטבה <span class="muted">(${it.lot.planType === 'RSU' ? 'ממוצע 30 יום, ידני' : 'מדוח הנאמן'})</span>`
-          : `שווי ההטבה <span class="muted">(${esppValueText(calc, it.lot) || 'מחיר השוק ביום הרכישה'})</span>`;
+          : 'שווי ההטבה <span class="muted">(מחיר השוק ביום הרכישה)</span>';
       if (!calc.early) rows.push(row(vLabel, calc.baseUsd, '', NaN));
-      rows.push(row(`שולם${calc.paidKnown ? '' : ' <span class="muted">(חסר, נחשב כ‑0 הנחה)</span>'}`, calc.paidUsd, '', NaN));
+      const paidNote = calc.paidSource === 'lookback' ? ` <span class="muted">(מחושב: ${esppPlanText(calc, it.lot)})</span>` : calc.paidKnown ? '' : ' <span class="muted">(חסר, נחשב כ‑0 הנחה)</span>';
+      rows.push(row(`שולם${paidNote}`, calc.paidUsd, '', NaN));
       rows.push(row(`הכנסת עבודה${calc.early ? ' <span class="muted">(כל הרווח)</span>' : ''}`, calc.workUsd, rateCell(calc.sell), calc.workIls, 'hl'));
     }
     if (!calc.noForm) {
@@ -284,10 +285,11 @@
     if (it.is102 && isFinite(workW) && Math.abs(it.workTax - workW) > Math.max(100, it.workTax * 0.05)) {
       notes.push('הניכוי על הכנסת העבודה שונה מההערכה ביותר מ‑5%. כדאי לבדוק את שיעור המס השולי שהוגדר מול דוח הנאמן.');
     }
-    if (it.is102 && it.lot.planType === 'ESPP' && !calc.early) {
-      if (calc.baseSource === 'cost') notes.push('שווי ההטבה ב‑ESPP הוא הנמוך מבין מחיר השוק בתחילת תקופת ההצעה וביום הרכישה. חסר תאריך תחילת ההצעה, ולכן נלקח מחיר יום הרכישה. אפשר להוסיף את התאריך או את אחוז ההנחה בעריכת העסקה, או להקליד את השווי מדוח הנאמן.');
-      if (calc.baseSource === 'derived') notes.push('חסר מחיר השוק בתחילת תקופת ההצעה, ולכן שווי ההטבה נגזר מהמחיר ששולם ומאחוז ההנחה (בתוכנית עם Lookback זה הנמוך מבין שני המחירים). אם בדוח הנאמן מופיע שווי אחר, אפשר להקליד אותו.');
-      if (calc.baseSource === 'lookback' && calc.espp.s0Source === 'close') notes.push('המחיר בתחילת תקופת ההצעה נלקח ממחיר הסגירה (Yahoo, מתואם לפיצולים), כי לא הוזן Grant Date FMV מ‑E*Trade. אם הוא שונה, אפשר להקליד אותו בעריכת העסקה.');
+    if (it.is102 && calc.espp) {
+      const e = calc.espp;
+      if (calc.paidSource === 'lookback') notes.push(`הסכום ששולם חסר, ולכן חושב לפי כלל ה‑Lookback: ${100 - e.discount}% מהנמוך מבין מחיר השוק בתחילת תקופת ההצעה וביום הרכישה. הכנסת העבודה היא ההפרש בין מחיר השוק ביום הרכישה לבין מה ששולם. כדאי להקליד את הסכום מ‑E*Trade (Acquisition Cost).`);
+      if (e.mismatch) notes.push(`הסכום ששולם (${usd(Core.round2(calc.paidUsd / it.lot.qty))} $ למניה) שונה ממחיר ה‑Lookback (${esppPlanText(calc, it.lot)}). כדאי לבדוק את הסכום, את תאריך תחילת ההצעה ואת אחוז ההנחה.`);
+      if ((calc.paidSource === 'lookback' || e.mismatch) && e.s0Source === 'close') notes.push('המחיר בתחילת תקופת ההצעה נלקח ממחיר הסגירה (Yahoo, מתואם לפיצולים), כי לא הוזן Grant Date FMV מ‑E*Trade.');
     }
     if (it.is102 && calc.baseSource === 'avg30') notes.push('ממוצע 30 הימים מחושב ממחירי סגירה מ‑Yahoo, שמתואמים לפיצולי מניה. אם הסכום בדוח הנאמן שונה, עדיף להקליד אותו בעריכת העסקה.');
     return `<div class="panel">
@@ -324,14 +326,11 @@
       <p class="hint">בסוגריים הקטנים: הסטייה מבנק ישראל. מסומן בצהוב מעל ${Core.CHECK_THRESHOLDS.ecb}% ב‑ECB או מעל ${Core.CHECK_THRESHOLDS.yahoo}% ב‑Yahoo.</p>`;
   }
 
-  /** How the ESPP benefit value under 102 was found, for the panel and explanation.txt. */
-  function esppValueText(calc, lot) {
+  /** The lookback plan price of an ESPP lot, in words: "85% × min(S0, S1) = price $ per share". */
+  function esppPlanText(calc, lot) {
     const e = calc.espp;
-    if (!e) return '';
-    const s0src = e.s0Source === 'etrade' ? 'לפי E*Trade' : 'מחיר סגירה';
-    if (e.source === 'lookback') return `הנמוך מבין ${e.s0} $ בתחילת ההצעה (${Core.formatDateIL(lot.offerStart)}, ${s0src}) ו‑${e.s1} $ ביום הרכישה`;
-    if (e.source === 'derived') return `נגזר מהמחיר ששולם: ${Core.round2(lot.paidUsd / lot.qty)} ÷ (1 − ${e.discount}%)${e.perShare < Core.round2(lot.paidUsd / lot.qty / (1 - e.discount / 100)) ? ', ולא יותר ממחיר יום הרכישה' : ''}`;
-    return 'מחיר השוק ביום הרכישה';
+    if (!e || !isFinite(e.planPrice)) return '';
+    return `${100 - e.discount}% × הנמוך מבין ${e.s0} $ (תחילת ההצעה, ${Core.formatDateIL(lot.offerStart)}) ו‑${e.s1} $ (יום הרכישה) = ${e.planPrice} $ למניה`;
   }
 
   // ------------------------------------------------------------ "what if" stock chart (src/js/whatif.js)
@@ -1311,7 +1310,8 @@
         L.push(`   הכנסת עבודה ${usd(calc.workUsd)}$ = ${fmt(calc.workIls)} ₪ (שער יום המכירה); מס שולי משוער ${fmt(it.workTax)} ₪${isFinite(it.lot.withheldIls) ? `; הנאמן ניכה ${fmt(it.lot.withheldIls)} ₪` : ''}.`);
         if (isFinite(it.lot.withheldCapIls)) L.push(`   הנאמן ניכה ${fmt(it.lot.withheldCapIls)} ₪ על רווח ההון.`);
         if (calc.baseSource === 'manual') L.push(`   שווי ההטבה: ${it.lot.avg30}$ למניה, מדוח הנאמן.`);
-        if (calc.espp && calc.baseSource !== 'manual') L.push(`   שווי ההטבה: ${calc.espp.perShare}$ למניה, ${esppValueText(calc, it.lot)}.`);
+        if (calc.paidSource === 'lookback') L.push(`   הסכום ששולם חושב לפי Lookback: ${esppPlanText(calc, it.lot)}.`);
+        else if (calc.espp && calc.espp.mismatch) L.push(`   לבדיקה: הסכום ששולם שונה ממחיר ה-Lookback (${esppPlanText(calc, it.lot)}).`);
         if (calc.baseSource === 'avg30') L.push(`   שווי ההטבה: ממוצע סגירה ${calc.avg.avg}$ ב-30 ימי המסחר ${Core.formatDateIL(calc.avg.from)}–${Core.formatDateIL(calc.avg.to)}.`);
         if (calc.noForm) { L.push(`   נמכר ${Core.formatDateIL(lot.dateSold)} בשער ${calc.sell.rate}. ${Core.SCENARIO_TEXT['early-102']}`); return; }
       }
