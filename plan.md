@@ -38,7 +38,7 @@ Status words used below:
 | 2 | Done: L1-L15, D1-D3, with the owner's decisions recorded in `docs/HANDOFF.md`. **L16 (surtax) deferred.** |
 | 3 | Done: P1-P4, P6, P7 (pdf.js 4.10.38 legacy, lazy libraries, one `.js` data file per source). **P5 and P8 declined** by the owner. |
 | 4 | Done: U1-U14 with the owner's decisions recorded in `docs/HANDOFF.md`. U15 kept as is (undo, no confirmation). |
-| 5 | Not started. |
+| 5 | Done: T1, T3-T6. T2 is covered by the tests added with rounds 1-2. **T7 open:** needs real E*Trade files, a trustee report and the 2026 form. |
 
 ## Rounds at a glance
 

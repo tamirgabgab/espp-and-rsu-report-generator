@@ -53,7 +53,19 @@ need `pdftoppm`):
 npm run sample
 ```
 
-GitHub Actions runs both on every push (`.github/workflows/tests.yml`).
+Browser smoke test (`tests/e2e.js`, Playwright + Chromium). It serves the
+repository on a free port, imports a synthetic CSV, opens a calculation
+panel, downloads the PDF, the Excel file and the package, and visits the four
+tabs at 375 and 1280 px in the light and dark themes. Any page or console
+error fails it:
+
+```bash
+npm run e2e
+```
+
+GitHub Actions runs all of them on every push (`.github/workflows/tests.yml`),
+together with `node --check` on every file in `src/js/`. The workflow only
+has read access to the repository (`permissions: contents: read`).
 
 ## PDF form filling
 

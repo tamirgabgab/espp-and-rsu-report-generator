@@ -37,6 +37,27 @@ on `cdn.sheetjs.com`, not on npm: download
 `https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js` and replace
 `xlsx.full.min.js` (plan.md, S3).
 
+## Security advisories: check every quarter
+
+Dependabot does not see files copied into `vendor/`, so check these pages
+every three months (and before a release). If a version above is affected,
+upgrade it as described below.
+
+| Library | Advisories |
+|---|---|
+| pdf.js | https://github.com/mozilla/pdf.js/security/advisories |
+| SheetJS | https://git.sheetjs.com/sheetjs/sheetjs/issues?labels=security and https://cdn.sheetjs.com/advisories/ |
+| Tesseract.js | https://github.com/naptha/tesseract.js/security/advisories |
+| KaTeX | https://github.com/KaTeX/KaTeX/security/advisories |
+| JSZip | https://github.com/Stuk/jszip/security/advisories |
+| pdf-lib / fontkit | https://github.com/Hopding/pdf-lib/security/advisories |
+
+The GitHub advisory database also lists them by package name:
+https://github.com/advisories?query=ecosystem%3Anpm+pdfjs-dist (replace the
+package name: `xlsx`, `tesseract.js`, `katex`, `jszip`, `pdf-lib`).
+
+## Upgrading
+
 To upgrade, download the package with `npm pack <name>@<version>` and copy the
 file from its `dist/` folder. Then run `npm test` and `npm run sample`.
 

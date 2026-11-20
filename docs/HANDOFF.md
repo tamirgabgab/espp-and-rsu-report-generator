@@ -628,6 +628,17 @@ footer; the tabs stay as they are; "what if" and the rate check are closed
 - **U13:** each "what if" date field shows the app's date format under it.
 - **U14:** formula lines break before "= result", never inside it.
 
+### Round 5: tests, CI, docs
+- **T1:** `tests/e2e.js` (`npm run e2e`), a Playwright smoke test with its own
+  static server and a synthetic CSV. CI runs it in a separate `e2e` job
+  (Playwright 1.63.0, Chromium).
+- **T3:** `tests.yml` has `permissions: contents: read` and a `node --check`
+  step for `src/js/*.js`. Actions are not pinned by hash (not asked for).
+- **T4:** quarterly advisory list in `vendor/README.md`.
+- **T5:** docs updated (`development.md`, `README.md`, this file).
+- **T6:** privacy section in `README.md`, with the shared-origin note.
+- **T7** (real files, 2026 form, surtax) stays open; see below.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -658,7 +669,8 @@ footer; the tabs stay as they are; "what if" and the rate check are closed
 7. **Other currencies.** Only USD is supported.
 8. **Page 2 of the form** ("פרטים נוספים") is not included. It is not needed
    for simple share sales.
-9. **plan.md round 5** is still open, plus S3 (SheetJS upgrade) and S7 (CSP).
+9. **plan.md:** S3 (SheetJS upgrade, blocked here) and S7 (CSP) are still open,
+   and T7 needs real files.
 
 ## How to continue
 - Read `CLAUDE.md` first: always answer the user in Hebrew.

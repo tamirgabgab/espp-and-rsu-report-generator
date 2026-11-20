@@ -53,9 +53,9 @@ a summary appendix and an Excel workbook, ready to send to your accountant.
 4. **Review each lot.** Open **"הצגת החישוב"** (show the calculation) to see
    the formula with your numbers and the rate cross-check. Fix anything marked
    ⚠ with the edit button.
-5. **Download.** Enter your name and ID number in step 4, then use the buttons
-   at the top of the page (or the bottom bar on phones) to view or download the
-   PDF (forms + summary) and the Excel file.
+5. **Download.** Use the buttons at the top of the page (or the bottom bar) to
+   view or download the PDF (forms + summary) and the Excel file. If your name
+   or ID number is missing, a small dialog asks for them first.
 
 The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 
@@ -103,6 +103,13 @@ Run the unit tests (Node 18+):
 npm test
 ```
 
+Run the browser smoke test (needs Playwright with Chromium; CI runs it on
+every push):
+
+```bash
+npm run e2e
+```
+
 Render a sample PDF to `out/`:
 
 ```bash
@@ -116,6 +123,20 @@ npm run rates
 ```
 
 More in [docs/development.md](docs/development.md).
+
+## Privacy
+
+- Files you import are read in the browser and never sent anywhere. The only
+  network requests are for the app's own files (rates, libraries, the blank
+  form).
+- Your lots, name and settings are kept in the browser's `localStorage`, so
+  they stay on this device until you delete them. The ID number is kept in
+  memory only and is gone when the page closes.
+- **Shared origin:** every GitHub Pages site under `tamirgabgab.github.io`
+  shares one origin, so another Pages project of the same account could read
+  this app's `localStorage`. Serving the app from its own (custom) domain
+  removes that. If this matters to you, delete the data after use ("מחיקת
+  הכל") or run the app locally.
 
 ## Disclaimer
 
