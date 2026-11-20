@@ -7,25 +7,12 @@
  */
 (function () {
   'use strict';
-  let loading = null;
   let done = false;
 
   function loadKatex() {
     if (window.katex) return Promise.resolve();
-    if (!loading) {
-      loading = new Promise((resolve, reject) => {
-        const css = document.createElement('link');
-        css.rel = 'stylesheet';
-        css.href = 'vendor/katex/katex.min.css';
-        document.head.appendChild(css);
-        const s = document.createElement('script');
-        s.src = 'vendor/katex/katex.min.js';
-        s.onload = resolve;
-        s.onerror = () => { loading = null; reject(new Error('KaTeX did not load')); };
-        document.head.appendChild(s);
-      });
-    }
-    return loading;
+    window.Lib.css('vendor/katex/katex.min.css').catch(() => {}); // the formulas still show without it
+    return window.Lib.script('vendor/katex/katex.min.js');
   }
 
   // Each section: a Hebrew title, Hebrew paragraphs and display formulas (TeX).

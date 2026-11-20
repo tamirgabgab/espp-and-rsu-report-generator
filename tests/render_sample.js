@@ -7,7 +7,7 @@ const Core = require('../src/js/core.js');
 const Pdf = require('../src/js/pdf1399.js');
 
 const root = path.join(__dirname, '..');
-const rates = require('../data/rates/daily/boi.json').rates;
+const rates = require('./load_data').loadWindowData('data/rates/daily/boi.js').USD_ILS_RATES.rates;
 const lots = [
   { symbol: 'QCOM', planType: 'ESPP', qty: 17, dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 },
   { symbol: 'QCOM', planType: 'RSU', qty: 10, dateAcquired: '2022-08-22', dateSold: '2026-05-11', proceedsUsd: 2317.04, costUsd: 1460.2, feesUsd: 0 },

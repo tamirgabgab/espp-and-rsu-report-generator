@@ -127,6 +127,17 @@
     return lastDateCache.get(rates);
   }
 
+  /**
+   * The rate of a date, or for a date after the bundled data (a sale not yet
+   * published) the last rate there is, marked isLast. Used for estimates only.
+   */
+  function rateOrLast(rates, iso) {
+    const r = lookupRate(rates, iso);
+    if (r) return { ...r, isLast: false };
+    const last = rates && iso ? lastDate(rates) : '';
+    return last && iso > last ? { rate: rates[last], date: last, exact: false, isLast: true } : null;
+  }
+
   function lookupRate(rates, iso) {
     if (!rates || !iso) return null;
     // Never fall back across the end of the bundled data: a date after the last
@@ -877,8 +888,8 @@
    */
   function evaluateLot(lot, { rates, prices, is102, settings }) {
     const overrides = { rateBuy: lot.rateBuy, rateSell: lot.rateSell };
-    const last = lastDate(rates || {});
-    if (!overrides.rateSell && lot.dateSold && last && lot.dateSold > last) overrides.rateSell = rates[last];
+    const sale = !overrides.rateSell ? rateOrLast(rates, lot.dateSold) : null;
+    if (sale && sale.isLast) overrides.rateSell = sale.rate;
     const calc = is102 ? computeLot102(lot, rates, overrides, { prices }) : computeLot(lot, rates, overrides);
     if (!calc.ok) return { ok: false, issues: calc.issues };
     const rb = calc.buy ? calc.buy.rate : (lookupRate(rates, allocationDate(lot)) || {}).rate;
@@ -1139,6 +1150,12 @@
   }
   const D_ = iso => (iso ? formatDateIL(iso) : '—');
 
+  /** True when an OCR reading found sales and every one passes the cross-checks (no need to read again). */
+  function gainsReadingOk(text, opts) {
+    const { lots } = parseGainsText(text, opts);
+    return lots.length > 0 && lots.every(l => { const p = lotProblems(l); return !p.cost && !p.paid && !p.missing; });
+  }
+
   /**
    * Fallback for documents that are not a G&L page (for example a trade
    * confirmation): pull the sale-side facts that can be found, to prefill a lot.
@@ -1209,12 +1226,12 @@
 
   return {
     TAX_RATE, parseDate, localISO, formatDateIL, addDays, addMonths, halfOfYear, parseMoney, round2, roundILS,
-    lookupRate, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
+    lookupRate, rateOrLast, computeLot, summarize, parseEtradeRows, mapHeaders, normalizePlan,
     CHECK_THRESHOLDS, crossCheck, nyToUtcEpoch, intradayAt,
     closedFormReal, isValidIsraeliId, parseOrderText, SCENARIO_TEXT,
     makeBackup, parseBackup, mergeLots, lotKey, cleanLot, cleanHolding, cleanProfile,
     avgCloseBefore, lastClose, HOLDING_MONTHS, WORK_DEFAULTS, allocationDate, unlockDate, computeLot102, workTax,
-    parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, snapSymbol,
+    parseHoldingsRows, holdingToLot, simulateHolding, parseGainsText, parseSaleHints, bestGainsParse, gainsReadingOk, snapSymbol,
     ESPP_DISCOUNT, offeringStart, lookbackPrice, priceOn, evaluateLot, whatIfLots, esppLookback,
   };
 });

@@ -13,16 +13,23 @@ tests. They are committed so the site does not depend on a CDN.
 | `tesseract/tesseract-core-simd-lstm.wasm.js`, `tesseract/tesseract-core-lstm.wasm.js` | [tesseract.js-core](https://github.com/naptha/tesseract.js-core) | 5.1.1 | Apache-2.0 ([licenses/LICENSE-tesseract.js-core](licenses/LICENSE-tesseract.js-core)) |
 | `tesseract/lang/eng.traineddata.gz` | [@tesseract.js-data/eng](https://www.npmjs.com/package/@tesseract.js-data/eng) (`4.0.0_best_int`) | 1.0.0 | MIT (model from tesseract-ocr/tessdata, Apache-2.0) |
 | `katex/katex.min.js`, `katex/katex.min.css`, `katex/fonts/*.woff2` | [KaTeX](https://katex.org) | 0.19.1 | MIT ([licenses/LICENSE-katex](licenses/LICENSE-katex)) |
-| `pdfjs/pdf.min.js`, `pdfjs/pdf.worker.min.js` | [pdf.js](https://github.com/mozilla/pdf.js) (pdfjs-dist) | 3.11.174 | Apache-2.0 ([licenses/LICENSE-pdfjs](licenses/LICENSE-pdfjs)) |
+| `pdfjs/pdf.min.mjs`, `pdfjs/pdf.worker.min.mjs` | [pdf.js](https://github.com/mozilla/pdf.js) (pdfjs-dist, `legacy/build`) | 4.10.38 | Apache-2.0 ([licenses/LICENSE-pdfjs](licenses/LICENSE-pdfjs)) |
 
-pdf.js, JSZip and Tesseract are loaded lazily: pdf.js for the PDF preview and
-for reading uploaded PDFs, JSZip for the accountant package, and Tesseract
-(about 7 MB with the English model) only when a screenshot or a scanned PDF is
-uploaded. The browser picks the SIMD build of the Tesseract core when it can. pdf.js runs with
-`disableFontFace: true`, because the form's embedded Hebrew CID fonts render
-garbled through the browser's FontFace path, and with `isEvalSupported: false`,
-the official mitigation for CVE-2024-4367 in pdf.js before 4.2.67 (uploaded PDFs
-are untrusted input). Upgrading pdf.js to 4.x is planned (plan.md, S2 and P3).
+No library loads with the page. Every library is loaded on first
+use through `window.Lib` (`src/js/loader.js`): SheetJS when an Excel file is
+imported or exported, pdf-lib and fontkit when the PDF is built, pdf.js for the
+PDF preview and for reading uploaded PDFs, JSZip for the accountant package,
+KaTeX for the explanation view, and Tesseract (about 7 MB with the English
+model) only when a screenshot or a scanned PDF is uploaded. The browser picks
+the SIMD build of the Tesseract core when it can.
+
+pdf.js 4.x ships only as ES modules, so `Lib.pdfjs()` loads it with a dynamic
+`import()` of an absolute URL. The `legacy` build is used for older Safari and
+Chrome versions. pdf.js runs with `disableFontFace: true`, because the form's
+embedded Hebrew CID fonts render garbled through the browser's FontFace path,
+and with `isEvalSupported: false` as defence in depth (CVE-2024-4367 is fixed
+from 4.2.67; uploaded PDFs are untrusted input). The server must serve `.mjs`
+as JavaScript (GitHub Pages and `python3 -m http.server` do).
 
 SheetJS 0.18.5 has two published advisories for reading crafted files
 (CVE-2023-30533, CVE-2024-22363). The fixed release, 0.20.3, is published only

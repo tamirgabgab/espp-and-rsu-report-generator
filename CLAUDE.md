@@ -13,7 +13,7 @@
   Israeli Tax Authority form 1399 (י) for the user's accountant. See README.md and docs/, and read
   docs/HANDOFF.md at the start of every session (update it at the end).
 - USD/ILS rates come from the Bank of Israel representative rate (series RER_USD_ILS), bundled in
-  `data/rates/daily/boi.json` / `.js` and refreshed by `tools/update_rates.py`. The BOI API rejects
+  `data/rates/daily/boi.js` (one date per line) and refreshed by `tools/update_rates.py`. The BOI API rejects
   cross-origin browser calls, so the app must not depend on fetching it at runtime.
 - Only the BOI rate goes on the form. ECB / Yahoo daily rates are a cross-check, and Yahoo
   intraday bars (data/rates/intraday/) show the rate at the sale time for information only.

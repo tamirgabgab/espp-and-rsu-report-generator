@@ -13,7 +13,6 @@
 (function () {
   'use strict';
   const Core = window.Core;
-  const NS = 'http://www.w3.org/2000/svg';
   const DAY = 86400000;
   const H = 220, M = { l: 48, r: 16, t: 16, b: 28 };
 

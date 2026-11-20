@@ -350,10 +350,7 @@
         <div id="fx-out" aria-live="polite"></div>
       </section>
 
-      <section class="card" aria-labelledby="fx-all-title">
-        <h2 id="fx-all-title">הנוסחאות לכל ארבעת המקרים</h2>
-        <div id="fx-all" class="explain-body"></div>
-      </section>
+      <p class="hint">הנוסחאות הכלליות לארבעת המקרים (ESPP ו‑RSU, עם נאמן ובלי) נמצאות בלשונית ההסבר. <button type="button" class="btn-link" id="fx-to-explain">מעבר להסבר</button></p>
     </div>
 
     <!-- Explanation: the general method, formulas in LaTeX (KaTeX) -->
@@ -621,20 +618,18 @@
   <div id="toasts" class="toasts" aria-live="polite"></div>
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
 
-  <script src="vendor/pdf-lib.min.js"></script>
-  <script src="vendor/fontkit.umd.min.js"></script>
-  <script src="vendor/xlsx.full.min.js"></script>
-  <script src="data/rates/daily/boi.js"></script>
-  <script src="data/rates/daily/secondary.js"></script>
-  <script src="data/stocks/prices.js"></script>
-  <script src="src/js/core.js"></script>
-  <script src="src/js/pdf1399.js"></script>
-  <script src="src/js/chart.js"></script>
-  <script src="src/js/docimport.js"></script>
-  <script src="src/js/app.js"></script>
-  <script src="src/js/sim.js"></script>
-  <script src="src/js/formulas.js"></script>
-  <script src="src/js/whatif.js"></script>
-  <script src="src/js/explain.js"></script>
+  <script src="src/js/loader.js" defer></script>
+  <script src="data/rates/daily/boi.js" defer></script>
+  <script src="data/rates/daily/secondary.js" defer></script>
+  <script src="data/stocks/prices.js" defer></script>
+  <script src="src/js/core.js" defer></script>
+  <script src="src/js/pdf1399.js" defer></script>
+  <script src="src/js/chart.js" defer></script>
+  <script src="src/js/docimport.js" defer></script>
+  <script src="src/js/app.js" defer></script>
+  <script src="src/js/sim.js" defer></script>
+  <script src="src/js/formulas.js" defer></script>
+  <script src="src/js/whatif.js" defer></script>
+  <script src="src/js/explain.js" defer></script>
 </body>
 </html>

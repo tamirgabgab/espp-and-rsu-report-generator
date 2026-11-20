@@ -248,8 +248,6 @@ code { font-size: 12px; background: var(--surface-2); padding: 1px 4px; border-r
 .sum-card .due { color: var(--muted); font-size: 12px; margin-top: 8px; }
 .sum-card .carry dt, .sum-card .carry dd { color: var(--muted); }
 .prior-loss { max-width: 420px; margin-top: 16px; }
-.explain-all { margin-top: 16px; border-top: 1px solid var(--grid); padding-top: 8px; }
-.explain-all > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: list-item; padding-top: 12px; }
 .explain-body { font-size: 14px; max-width: 72ch; }
 .explain-body h3 { font-size: 16px; margin: 16px 0 8px; }
 .explain-body p { margin: 8px 0; }

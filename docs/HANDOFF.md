@@ -64,8 +64,8 @@ each work session.
   | Source | What | File | Role |
   |---|---|---|---|
   | BOI | representative rate | `data/rates/daily/boi.*` | the form |
-  | ECB | via Frankfurter | `data/rates/daily/ecb.json` | cross-check |
-  | Yahoo | `ILS=X` daily close | `data/rates/daily/yahoo.json` | cross-check |
+  | ECB | via Frankfurter | `data/rates/daily/secondary.js` (`ecb`) | cross-check |
+  | Yahoo | `ILS=X` daily close | `data/rates/daily/secondary.js` (`yahoo`) | cross-check |
   | Yahoo | 1m and 60m bars | `data/rates/intraday/` | rate at sale time, information only |
 
 - ECB and Yahoo daily are bundled for the browser in `data/rates/daily/secondary.js`.
@@ -158,7 +158,7 @@ each work session.
   `computeLot` on 2,000 random lots, within ±3 ₪ of rounding.
 - Field-level validation in the edit drawer: on blur and on save, with
   `aria-invalid` and error text under the field.
-- PDF preview in a dialog, using pdf.js 3.11.174 (lazy-loaded). It needs
+- PDF preview in a dialog, using pdf.js 4.10.38 (legacy build, lazy-loaded). It needs
   `disableFontFace: true`, otherwise the form's Hebrew CID fonts render garbled.
 
 ### Package C: import and editing comfort
@@ -450,8 +450,10 @@ Decided with the user:
 Built:
 - **Reading:** `src/js/docimport.js`. Text PDFs go through pdf.js. Scans and
   images go through Tesseract.js 5.1.1, vendored in `vendor/tesseract/` with
-  the English `best_int` model, lazy-loaded. Each image gets three OCR passes
-  with upscaling, grey, a contrast stretch and sharpening.
+  the English `best_int` model, lazy-loaded. Each image gets up to three OCR
+  passes with upscaling, grey, a contrast stretch and sharpening. Passes 2 and
+  3 run only when the first finds no sale or a sale fails the cross-checks
+  (`Core.gainsReadingOk`).
 - **Parsing:**
   - `Core.parseGainsText` reads the G&L layout;
   - `Core.bestGainsParse` merges the passes field by field, using the
@@ -562,6 +564,32 @@ Tests: 55 Node tests and 6 Python tests (`tests/test_update_rates.py`, now in
 fields, the panel, the RSU grant handle, simulator, formulas tab and PDF
 preview, no console errors, no overflow at 375 px.
 
+### Round 3: performance and duplicated code
+Decisions taken with the owner: pdf.js 4.10 (legacy build); one `.js` file per
+data source with one date per line; no service worker (P8); `app.js` is not
+split (P5); the four-case formula list is replaced by a link to the
+explanation view.
+- **P1:** `src/js/loader.js` (`window.Lib`) loads every library on first use:
+  SheetJS, pdf-lib + fontkit, pdf.js (dynamic `import()` of the `.mjs`), JSZip,
+  KaTeX, Tesseract. All app scripts are `defer`. First load went from about
+  2.6 MB to 0.57 MB.
+- **P2:** `persist()` skips unchanged writes; `computeItem` is cached per lot
+  (WeakMap, keyed by the lot and the work-tax settings); the rate cross-check
+  is memoized per date; only the table or only the cards are built, by
+  viewport; the chart redraws only when its markers or width change;
+  `renderCurrent()` re-renders only the active view.
+- **P3/P4:** shared `bindDialogClose`, icons and `sec102Of` between app and
+  simulator; `Core.rateOrLast` (rate on a date, or the last known one) used by
+  the report and the formulas tab; dead code removed.
+- **P6:** `boi.json`, `ecb.json`, `yahoo.json` and `QCOM.json` are gone.
+  `tools/update_rates.py` writes only `boi.js`, `secondary.js` and
+  `prices.js`, date maps one date per line, and reads the old data back from
+  them (`read_js`). Node tests load them with `tests/load_data.js`.
+- **P7:** OCR stops after the first pass when it is good enough.
+
+Tests: 56 Node tests and 7 Python tests. Browser check: imports (Excel and
+PDF), preview, draft, simulator, formulas, "what if", no console errors.
+
 ## Known gaps / next steps
 1. **Real E*Trade file.** The parser was tested on a synthetic file shaped like
    `G&L_Expanded.xlsx`. Run it against a real export, then adjust
@@ -592,7 +620,7 @@ preview, no console errors, no overflow at 375 px.
 7. **Other currencies.** Only USD is supported.
 8. **Page 2 of the form** ("פרטים נוספים") is not included. It is not needed
    for simple share sales.
-9. **plan.md rounds 3-5** are still open, plus S3 (SheetJS upgrade) and S7 (CSP).
+9. **plan.md rounds 4-5** are still open, plus S3 (SheetJS upgrade) and S7 (CSP).
 
 ## How to continue
 - Read `CLAUDE.md` first: always answer the user in Hebrew.

@@ -81,7 +81,7 @@ The step-by-step guide is in [docs/user-guide.md](docs/user-guide.md).
 | `data/rates/daily/` | Daily USD/ILS rates: Bank of Israel, ECB and Yahoo (`.json`, plus `.js` for the browser) |
 | `data/rates/intraday/` | Yahoo 1-minute (by month) and 1-hour (by year) rates |
 | `data/stocks/` | Daily closes of the employer's stock (QCOM), for the RSU 30-day average and the simulator |
-| `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS, pdf.js for the preview, JSZip for the package) and their licenses |
+| `vendor/` | Third-party libraries (pdf-lib, fontkit, SheetJS, pdf.js, JSZip, KaTeX, Tesseract; all loaded on first use by `src/js/loader.js`) and their licenses |
 | `assets/icons/`, `manifest.webmanifest` | App icons and the web-app manifest (home-screen install) |
 | `tools/` | `update_rates.py`, which downloads all rate sources and the stock prices |
 | `tests/` | Unit tests and a sample PDF renderer |

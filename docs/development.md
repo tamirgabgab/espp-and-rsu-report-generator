@@ -7,7 +7,8 @@ scripts, no bundler).
 
 | File | Responsibility |
 |---|---|
-| `index.html` | The page and its sections. It loads vendor libraries, rate data and `src/js/*` in order. |
+| `index.html` | The page and its sections. It loads the loader, rate data and `src/js/*` with `defer`, in order. No vendor library loads with the page. |
+| `src/js/loader.js` | `window.Lib`: loads each vendor library on first use and caches the promise (`Lib.xlsx()`, `Lib.pdfLib()`, `Lib.pdfjs()`, `Lib.script()`, `Lib.css()`). |
 | `src/js/core.js` | Pure logic with no DOM, so it runs in the browser (`window.Core`) and in Node tests:<br>• date parsing<br>• rate lookup<br>• `computeLot` and `summarize`<br>• `crossCheck`, `nyToUtcEpoch` and `intradayAt`<br>• the E*Trade parser (`parseEtradeRows`, `COLUMN_ALIASES`)<br>• section 102: `computeLot102`, `workTax`, `allocationDate`, `unlockDate`<br>• stock prices: `avgCloseBefore` (30-trading-day average), `lastClose`<br>• simulator: `parseHoldingsRows`, `holdingToLot`, `simulateHolding`<br>• backup: `makeBackup`, `parseBackup` (lots, holdings, profile without the ID) |
 | `src/js/pdf1399.js` | Builds the PDF:<br>• copies page 1 of the blank form for each lot and draws the values at `FIELD_MAP` coordinates<br>• adds the summary pages<br>• works in the browser and in Node |
 | `src/js/chart.js` | SVG chart of the representative rate with buy/sell markers and a hover tooltip |

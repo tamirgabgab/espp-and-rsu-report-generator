@@ -16,7 +16,7 @@
   const state = { date: '', rate: '', prices: {}, qty: {} };
 
   const D = iso => Core.formatDateIL(iso);
-  const is102 = h => (h.sec102 === null || h.sec102 === undefined ? !!App.profile.sec102 : !!h.sec102);
+  const is102 = h => App.sec102Of(h);
   const withId = h => ({ ...Core.cleanHolding(h), id: nextId++ });
 
   const EXAMPLE = [
@@ -63,12 +63,10 @@
 
   // ------------------------------------------------------------ holdings list
 
-  const ICON_EDIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
-  const ICON_DEL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
 
   function trackText(h) {
     if (!is102(h)) return 'רגיל (ההטבה מוסתה במשכורת)';
-    const alloc = h.planType === 'RSU' ? h.grantDate : h.dateAcquired;
+    const alloc = Core.allocationDate(h);
     if (!alloc) return '102 · חסר תאריך הקצאה';
     const unlock = Core.unlockDate(alloc);
     return unlock <= (state.date || App.today()) ? '102 · אחרי 24 חודשים' : `102 · נעול עד ${D(unlock)}`;
@@ -80,8 +78,8 @@
     $('#sim-clear').hidden = holdings.length === 0;
     if (!holdings.length) { host.innerHTML = ''; return; }
     const actions = h => `<span class="row-actions">
-        <button type="button" class="icon-btn" data-hact="edit" data-id="${h.id}" aria-label="עריכת המנה" data-tip="עריכת המנה">${ICON_EDIT}</button>
-        <button type="button" class="icon-btn danger" data-hact="delete" data-id="${h.id}" aria-label="מחיקת המנה" data-tip="מחיקת המנה">${ICON_DEL}</button>
+        <button type="button" class="icon-btn" data-hact="edit" data-id="${h.id}" aria-label="עריכת המנה" data-tip="עריכת המנה">${App.ICON_EDIT}</button>
+        <button type="button" class="icon-btn danger" data-hact="delete" data-id="${h.id}" aria-label="מחיקת המנה" data-tip="מחיקת המנה">${App.ICON_DEL}</button>
       </span>`;
     const money = n => (isFinite(n) ? App.usd(n) : '—');
     host.innerHTML = `<div class="lots-desktop"><table class="lots-table">
@@ -309,6 +307,7 @@
     const msg = $('#sim-msg');
     if (!file) return;
     try {
+      const XLSX = await Lib.xlsx();
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
       const found = [];
       const warnings = [];
@@ -345,7 +344,7 @@
     }
     for (const k of ['planType', 'sec102', 'grantDate', 'dateAcquired', 'symbol']) H(k).addEventListener('change', updateHoldingFields);
     H('symbol').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
-    dlg().addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target === dlg()) dlg().close(); });
+    App.bindDialogClose(dlg());
 
     $('#sim-add').addEventListener('click', () => openHolding(null));
     $('#sim-import').addEventListener('click', () => $('#sim-file').click());

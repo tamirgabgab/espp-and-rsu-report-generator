@@ -36,10 +36,8 @@
     const avgAuto = prices && st.grantDate ? Core.avgCloseBefore(prices, st.grantDate) : null;
     const rbDate = is102 && plan === 'RSU' ? st.grantDate : st.buyDate;
     const rbAuto = rbDate ? Core.lookupRate(App.RATES, rbDate) : null;
-    let rsAuto = st.saleDate ? Core.lookupRate(App.RATES, st.saleDate) : null;
-    let rsIsLast = false;
-    const meta = window.USD_ILS_RATES;
-    if (!rsAuto && st.saleDate && meta && st.saleDate > meta.last) { rsAuto = { rate: meta.rates[meta.last], date: meta.last }; rsIsLast = true; }
+    const rsAuto = Core.rateOrLast(App.RATES, st.saleDate);
+    const rsIsLast = !!(rsAuto && rsAuto.isLast);
     const qty = n(st.qty);
     const fmv = isFinite(n(st.fmv)) ? n(st.fmv) : fmvAuto ? fmvAuto.rate : NaN;
     const avg = isFinite(n(st.avg30)) ? n(st.avg30) : avgAuto ? avgAuto.avg : NaN;
@@ -201,22 +199,7 @@
       ${net < 0 ? `<p class="case">אחרי המיסים והעלות יש הפסד נקי של ${App.ils(-net)}.</p>` : ''}`;
   }
 
-  function renderAll() {
-    const f = s => `<div class="formula">${s.map(x => `<span>${x}</span>`).join('')}</div>`;
-    const L = App.L;
-    $('#fx-all').innerHTML = `
-      <p>הסימנים: ${L('P')} תמורה, ${L('F')} עמלות, ${L('V')} שווי ההטבה, ${L('Cp')} מה ששילמת (בדולרים), ${L('Rb')} ו‑${L('Rs')} השער היציג ביום הרכישה, ההבשלה או ההקצאה, וביום המכירה. ${L('m')} הוא שיעור המס השולי, כולל ביטוח לאומי ובריאות אם רלוונטי.</p>
-      <p>רווח ההון מחושב תמיד באותה דרך, לפי חוזר 10/2025: ${L('A = (P − C − F) × Rs')}, ${L('B = P×Rs − C×Rb − F×Rs')}, ואז רווח ריאלי = ${L('min(A, B)')} כששניהם רווח, ${L('max(A, B)')} כששניהם הפסד, ו‑0 אחרת. המס הוא 25% אחרי קיזוז הפסדים. מה שמשתנה בין המקרים הוא ההגדרה של ${L('V')}, של העלות ${L('C')} ושל התאריך של ${L('Rb')}.</p>
-      <h3>‏ESPP, סעיף 102 עם נאמן</h3>
-      ${f([`שווי ההטבה: ${L('V = FMV(purchase) × qty')}`, `ששולם: ${L('Cp = (1 − d) × min(FMV(offer start), FMV(purchase)) × qty')}`, `הכנסת עבודה: ${L('W = min(V, P − F) − Cp')}`, `מס שולי: ${L('Tax_w = W × Rs × m')}`, `עלות לרווח ההון: ${L('C = Cp + W')}, בשער של יום הרכישה (ההקצאה)`, 'מכירה לפני 24 חודשים: כל הרווח הכנסת עבודה, ואין רווח הון'])}
-      <h3>‏ESPP בלי נאמן</h3>
-      ${f([`הטבה במשכורת, ביום הרכישה: ${L('W₀ = V − Cp')}`, `מס במשכורת: ${L('Tax₀ ≈ W₀ × Rb × m')}`, `עלות לרווח ההון: ${L('C = V')} (Adjusted Cost Basis), בשער של יום הרכישה`])}
-      <h3>‏RSU, סעיף 102 עם נאמן</h3>
-      ${f([`שווי ההטבה: ${L('V = avg30(before grant) × qty')}`, `ששולם: ${L('Cp = 0')}`, `הכנסת עבודה: ${L('W = min(V, P − F)')}`, `מס שולי: ${L('Tax_w = W × Rs × m')}`, `עלות לרווח ההון: ${L('C = W')}, בשער של יום ההענקה (ההקצאה)`, 'מכירה לפני 24 חודשים מההענקה: כל הרווח הכנסת עבודה'])}
-      <h3>‏RSU בלי נאמן</h3>
-      ${f([`הטבה במשכורת, ביום ההבשלה: ${L('W₀ = V = FMV(vest) × qty')}`, `מס במשכורת: ${L('Tax₀ ≈ W₀ × Rb × m')}`, `עלות לרווח ההון: ${L('C = V')}, בשער של יום ההבשלה`])}
-      <p class="hint">המס השולי הוא הערכה לפי השיעור שהגדרת. מס יסף לא מחושב. בחלק רווח ההון של מסלול 102 אין הכרעה רשמית בין חישוב ריאלי לנומינלי, והכלי מחשב ריאלית.</p>`;
-  }
+
 
   function render() {
     if (!App) return;
@@ -259,25 +242,25 @@
     });
     $('#fx-reset').addEventListener('click', () => { st = { ...EXAMPLE }; persist(); render(); App.toast('המחשבון אופס לדוגמה'); });
     App.syncWorkInputs();
-    renderAll();
+    $('#fx-to-explain').addEventListener('click', () => App.setView('explain', true));
     render();
   }
 
   /** Copy a report lot into the calculator. */
   function fillFromLot(l) {
-      // Enough decimals that per-share × quantity gives the lot's totals back to the cent.
-      const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 1e8) / 1e8) : '');
-      // ESPP under 102 with no price paid: the lookback plan price, as the report computes it.
-      const look = l.planType === 'ESPP' && App.sec102Of(l) && !isFinite(l.paidUsd) ? Core.esppLookback(l, App.PRICES) : null;
-      const paidLookback = look && isFinite(look.planPrice) ? String(look.planPrice) : '';
-      st = {
-        ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
-        grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
-        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd) || paidLookback, avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
-        paidLookback, paidLookbackText: paidLookback ? `${100 - look.discount}% מהנמוך מבין ${look.s0} $ ו‑${look.s1} $` : '',
-      };
-      persist();
-      render();
+    // Enough decimals that per-share × quantity gives the lot's totals back to the cent.
+    const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 1e8) / 1e8) : '');
+    // ESPP under 102 with no price paid: the lookback plan price, as the report computes it.
+    const look = l.planType === 'ESPP' && App.sec102Of(l) && !isFinite(l.paidUsd) ? Core.esppLookback(l, App.PRICES) : null;
+    const paidLookback = look && isFinite(look.planPrice) ? String(look.planPrice) : '';
+    st = {
+      ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
+      grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
+      fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd) || paidLookback, avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
+      paidLookback, paidLookbackText: paidLookback ? `${100 - look.discount}% מהנמוך מבין ${look.s0} $ ו‑${look.s1} $` : '',
+    };
+    persist();
+    render();
   }
 
   window.Formulas = { render, fillFromLot: l => { fillFromLot(l); } };

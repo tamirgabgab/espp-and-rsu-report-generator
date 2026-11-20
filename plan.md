@@ -36,7 +36,8 @@ Status words used below:
 |---|---|
 | 1 | Done: S1, S2 (`isEvalSupported: false`; the pdf.js upgrade moves to round 3), S4, S5, S6. **S3 blocked:** SheetJS 0.20.3 is only on cdn.sheetjs.com, which this environment cannot reach; see `vendor/README.md`. **S7 deferred** by the owner. |
 | 2 | Done: L1-L15, D1-D3, with the owner's decisions recorded in `docs/HANDOFF.md`. **L16 (surtax) deferred.** |
-| 3-5 | Not started. |
+| 3 | Done: P1-P4, P6, P7 (pdf.js 4.10.38 legacy, lazy libraries, one `.js` data file per source). **P5 and P8 declined** by the owner. |
+| 4-5 | Not started. |
 
 ## Rounds at a glance
 

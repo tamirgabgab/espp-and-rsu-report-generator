@@ -4,25 +4,27 @@
 
 | Source | Role | File(s) | History |
 |---|---|---|---|
-| **Bank of Israel** representative rate (שער יציג), series `RER_USD_ILS` | **Used on the form** | `data/rates/daily/boi.json`, `boi.js` | daily since Dec 2019 |
-| **ECB** reference rate via [Frankfurter](https://frankfurter.dev) (USD→ILS cross) | Cross-check | `data/rates/daily/ecb.json` | daily since Dec 2019 |
-| **Yahoo Finance** `ILS=X` daily close (London end of day) | Cross-check | `data/rates/daily/yahoo.json` | daily since Dec 2019 |
+| **Bank of Israel** representative rate (שער יציג), series `RER_USD_ILS` | **Used on the form** | `data/rates/daily/boi.js` | daily since Dec 2019 |
+| **ECB** reference rate via [Frankfurter](https://frankfurter.dev) (USD→ILS cross) | Cross-check | `data/rates/daily/secondary.js` (`ecb`) | daily since Dec 2019 |
+| **Yahoo Finance** `ILS=X` daily close (London end of day) | Cross-check | `data/rates/daily/secondary.js` (`yahoo`) | daily since Dec 2019 |
 | **Yahoo Finance** `ILS=X` 1-minute bars | Rate at the sale time (information only) | `data/rates/intraday/minute/YYYY-MM.json` | archive from Oct 2026, grows weekly |
 | **Yahoo Finance** `ILS=X` 1-hour bars | Rate at the sale time when no minute data exists | `data/rates/intraday/hourly/YYYY.json` | from Nov 2024 |
 
 - **Employer stock prices** (not an exchange rate, but refreshed by the same
   script): Yahoo Finance daily closes in USD, split-adjusted, since 2018, for
   the tickers in `data/stocks/tickers.json` (currently `["QCOM"]`). They are
-  written to `data/stocks/<TICKER>.json` (same format as the daily rate files)
-  and bundled for the browser in `data/stocks/prices.js`. Each file also has
-  `high` and `low` maps (the day's range, used by the "what if" chart)
-  (`window.STOCK_PRICES`). They are used for the 30-trading-day average before
+  written to `data/stocks/prices.js` (`window.STOCK_PRICES`, one entry per
+  ticker in the same format as the daily rate files). Each entry also has
+  `high` and `low` maps (the day's range, used by the "what if" chart). They are used for the 30-trading-day average before
   an RSU grant (section 102) and for the current price in the simulator. To
   add a ticker, add it to `tickers.json` and run
   `python3 tools/update_rates.py --sources stocks`.
-- **Browser bundles:** `data/rates/daily/secondary.js` bundles the ECB and
-  Yahoo daily rates for the browser. The `.js` twins let the page work even
-  when opened from `file://`.
+- **One file per source:** every daily source is a single `.js` file
+  (`window.X = {...};`) so the page works even when opened from `file://`.
+  Date maps are written one date per line, so the weekly commit only adds the
+  new lines. `secondary.js` holds the ECB and Yahoo daily rates together; a
+  source whose fetch fails keeps its previous data. Node tests read the files
+  with `tests/load_data.js`.
 - **Intraday index:** `data/rates/intraday/index.json` lists the available
   minute and hourly files.
 

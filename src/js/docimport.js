@@ -12,30 +12,14 @@
   'use strict';
   const TESS = 'vendor/tesseract/';
   const MAX_PAGES = 5;
-  const TARGET_WIDTH = 3000; // pixels: small screenshots read far better when upscaled
 
-  const abs = p => new URL(p, location.href).href;
-
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src; s.onload = resolve; s.onerror = () => reject(new Error(`load ${src}`));
-      document.head.appendChild(s);
-    });
-  }
-
-  async function pdfjs() {
-    if (!window.pdfjsLib) {
-      await loadScript('vendor/pdfjs/pdf.min.js');
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
-    }
-    return window.pdfjsLib;
-  }
+  const abs = p => window.Lib.abs(p);
+  const pdfjs = () => window.Lib.pdfjs();
 
   let workerPromise = null;
   let onProgress = null;
   async function tesseract() {
-    if (!window.Tesseract) await loadScript(TESS + 'tesseract.min.js');
+    if (!window.Tesseract) await window.Lib.script(TESS + 'tesseract.min.js');
     if (!workerPromise) {
       // Paths must be absolute: the worker resolves them relative to its own URL.
       workerPromise = window.Tesseract.createWorker('eng', 1, {
@@ -90,19 +74,29 @@
     return c;
   }
 
+  // Up to three readings at different sizes: OCR errors on small text differ between them,
+  // and Core.bestGainsParse keeps, field by field, the values that pass the cross-checks.
+  // Passes 2 and 3 run only when the first reading is not good enough (opts.good).
+  const PASSES = [[2600, true], [3100, true], [4200, false]];
+
   /**
-   * OCR a picture several times with different scaling and return all the
-   * texts; the caller keeps the best reading (Core.bestGainsParse).
+   * OCR every page image pass by pass; stop after a pass whose joined text is good.
+   * @param {{source, w, h}[]} imgs one image per page
+   * @returns {Promise<string[]>} one candidate text per pass that ran
    */
-  async function ocrPasses(source, w, h, page, pages, progress) {
-    // Three readings at different sizes: OCR errors on small text differ between them,
-    // and Core.bestGainsParse keeps, field by field, the values that pass the cross-checks.
-    const sc = target => Math.max(1, Math.min(4, target / w));
-    const passes = [[sc(2600), true], [sc(3100), true], [sc(4200), false]];
+  async function ocrPasses(imgs, progress, good) {
     const texts = [];
-    for (let k = 0; k < passes.length; k++) {
-      const [scale, sharpen] = passes[k];
-      texts.push(await ocr(prepare(source, w, h, scale, sharpen), page, pages, progress && (p => progress({ ...p, pass: k + 1, passes: passes.length }))));
+    for (let k = 0; k < PASSES.length; k++) {
+      const [target, sharpen] = PASSES[k];
+      const pages = [];
+      for (let n = 0; n < imgs.length; n++) {
+        const { source, w, h } = imgs[n];
+        const scale = Math.max(1, Math.min(4, target / w));
+        const prog = progress && (p => progress({ ...p, pass: k + 1, passes: PASSES.length }));
+        pages.push(await ocr(prepare(source, w, h, scale, sharpen), n + 1, imgs.length, prog));
+      }
+      texts.push(pages.join('\n'));
+      if (good && good(texts[k])) break;
     }
     return texts;
   }
@@ -160,7 +154,7 @@
     return rows.map(r => r.parts.sort((a, b) => a.x - b.x).map(p => p.s).join(' ').replace(/\s+/g, ' ').trim()).join('\n');
   }
 
-  async function readPdf(buf, progress) {
+  async function readPdf(buf, progress, good) {
     const lib = await pdfjs();
     const doc = await lib.getDocument({ data: new Uint8Array(buf), disableFontFace: true, isEvalSupported: false }).promise;
     const pages = Math.min(doc.numPages, MAX_PAGES);
@@ -172,7 +166,7 @@
     const text = texts.join('\n');
     if (text.replace(/\s/g, '').length > 40) return { texts: [text], method: 'pdf-text', pages };
     // No text layer (a scan or a saved screenshot): OCR the page image.
-    const perPage = [];
+    const imgs = [];
     for (let n = 1; n <= pages; n++) {
       const page = await doc.getPage(n);
       let img = await pageImage(lib, page);
@@ -184,18 +178,17 @@
         await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
         img = { source: c, w: c.width, h: c.height };
       }
-      perPage.push(await ocrPasses(img.source, img.w, img.h, n, pages, progress));
+      imgs.push(img);
     }
-    // Pass k of every page, joined: one candidate text per pass.
-    return { texts: perPage[0].map((_, k) => perPage.map(t => t[k]).join('\n')), method: 'ocr', pages };
+    return { texts: await ocrPasses(imgs, progress, good), method: 'ocr', pages };
   }
 
-  async function readImage(file, progress) {
+  async function readImage(file, progress, good) {
     let bmp;
     try { bmp = await createImageBitmap(file); } catch {
       throw Object.assign(new Error('unsupported image'), { userMessage: 'הדפדפן לא מצליח לפתוח את התמונה הזו. אפשר לשמור אותה כ‑PNG או JPEG ולנסות שוב.' });
     }
-    return { texts: await ocrPasses(bmp, bmp.width, bmp.height, 1, 1, progress), method: 'ocr', pages: 1 };
+    return { texts: await ocrPasses([{ source: bmp, w: bmp.width, h: bmp.height }], progress, good), method: 'ocr', pages: 1 };
   }
 
   const isDocument = file => /\.(pdf|png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(file.name) || /^(image\/|application\/pdf)/.test(file.type);
@@ -203,12 +196,13 @@
   /**
    * @param {File} file
    * @param {(p:{step:'load'|'ocr', page?, pages?, pct?}) => void} progress
+   * @param {{good?: (text:string) => boolean}} [opts] good: a reading that needs no further OCR pass
    * @returns {Promise<{texts:string[], method:'pdf-text'|'ocr', pages:number}>} one or more candidate readings
    */
-  async function read(file, progress) {
+  async function read(file, progress, { good } = {}) {
     const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
-    if (isPdf) return readPdf(await file.arrayBuffer(), progress);
-    return readImage(file, progress);
+    if (isPdf) return readPdf(await file.arrayBuffer(), progress, good);
+    return readImage(file, progress, good);
   }
 
   window.DocImport = { read, isDocument };

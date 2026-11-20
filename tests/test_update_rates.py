@@ -34,5 +34,18 @@ class CheckBoiHistory(unittest.TestCase):
         self.assertEqual(lines, ["2024-01-02: 3.61 -> 3.7"])
 
 
+
+class JsDataFileTest(unittest.TestCase):
+    def test_round_trip_one_date_per_line(self):
+        import tempfile
+        payload = {"source": "x", "rates": {"2024-01-02": 3.61, "2024-01-03": 3.62}, "high": {}}
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "x.js"
+            ur.write_js(path, "X_DATA", payload)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn('\n"2024-01-03":3.62\n', text)
+            self.assertEqual(ur.read_js(path, "X_DATA"), payload)
+            self.assertIsNone(ur.read_js(pathlib.Path(d) / "missing.js", "X_DATA"))
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,7 +52,7 @@ test('USD gain but ILS loss -> no gain and no loss', () => {
 });
 
 test('user example (QCOM ESPP) with official BOI rates', () => {
-  const rates = require('../data/rates/daily/boi.json').rates;
+  const rates = require('./load_data').loadWindowData('data/rates/daily/boi.js').USD_ILS_RATES.rates;
   const c = Core.computeLot({ dateAcquired: '2024-01-31', dateSold: '2026-05-11', proceedsUsd: 3938.96, costUsd: 2524.67, feesUsd: 0 }, rates);
   assert.equal(c.buy.rate, 3.635);
   assert.equal(c.sell.rate, 2.909);
@@ -349,6 +349,12 @@ test('OCR helpers: ticker snapping and best of several readings', () => {
   const best = Core.bestGainsParse([bad, OCR_GL], { symbols: ['ABCD'] });
   assert.equal(best.text, OCR_GL);
   assert.equal(Core.parseGainsText(bad).warnings.length, 1); // purchase price far below the FMV
+});
+
+test('OCR: a clean first reading needs no further pass', () => {
+  assert.equal(Core.gainsReadingOk(OCR_GL, { symbols: ['ABCD'] }), true);
+  assert.equal(Core.gainsReadingOk(OCR_GL.replace('$85.00', '$5.00'), { symbols: ['ABCD'] }), false);
+  assert.equal(Core.gainsReadingOk('no sales here'), false);
 });
 
 // ------------------------------------------------------------ what if / lookback
