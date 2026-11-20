@@ -67,6 +67,7 @@
     $('#fx-avg').placeholder = esppAvg ? '' : d.avgAuto ? `אוטומטי: ${d.avgAuto.avg}` : '';
     $('#fx-avg-note').textContent = esppAvg ? 'רק אם בדוח הנאמן מופיע שווי אחר. ריק = מחיר השוק ביום הרכישה.'
       : d.avgAuto ? `מ‑${D(d.avgAuto.from)} עד ${D(d.avgAuto.to)}. משאירים ריק כדי להשתמש בו.` : 'מזינים תאריך הענקה, או מקלידים את הממוצע מדוח הנאמן.';
+    $('#fx-paid-note').textContent = st.paidLookback && st.paid === st.paidLookback ? `מחושב לפי Lookback: ${st.paidLookbackText}.` : '';
     const last = Core.lastClose(d.prices);
     $('#fx-price-note').textContent = last ? `סגירה אחרונה של ${st.symbol}: ${last.price} ב‑${D(last.date)}.` : '';
     $('#fx-rb').placeholder = d.rbAuto ? `יציג: ${d.rbAuto.rate}` : '';
@@ -266,10 +267,14 @@
   function fillFromLot(l) {
       // Enough decimals that per-share × quantity gives the lot's totals back to the cent.
       const per = v => (isFinite(v) && l.qty > 0 ? String(Math.round((v / l.qty) * 1e8) / 1e8) : '');
+      // ESPP under 102 with no price paid: the lookback plan price, as the report computes it.
+      const look = l.planType === 'ESPP' && App.sec102Of(l) && !isFinite(l.paidUsd) ? Core.esppLookback(l, App.PRICES) : null;
+      const paidLookback = look && isFinite(look.planPrice) ? String(look.planPrice) : '';
       st = {
         ...st, plan: l.planType, track: App.sec102Of(l) ? '102' : 'regular', symbol: l.symbol || st.symbol, qty: isFinite(l.qty) ? String(l.qty) : '',
         grantDate: l.grantDate || '', buyDate: l.dateAcquired || '', saleDate: l.dateSold || '', price: per(l.proceedsUsd),
-        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd), avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
+        fees: String(l.feesUsd || 0), fmv: per(l.costUsd), paid: per(l.paidUsd) || paidLookback, avg30: l.avg30 || '', rb: l.rateBuy || '', rs: l.rateSell || '',
+        paidLookback, paidLookbackText: paidLookback ? `${100 - look.discount}% מהנמוך מבין ${look.s0} $ ו‑${look.s1} $` : '',
       };
       persist();
       render();
