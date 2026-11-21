@@ -301,8 +301,9 @@ Decided with the user before building.
 
 ### Home-screen app (icon only, by choice; no service worker, no offline)
 - `manifest.webmanifest` (RTL, he).
-- Icons in `assets/icons/`: a rising stock line from a green purchase point to
-  an orange sale point, on the app blue. Source `assets/icons/icon.svg`; run
+- Icons in `assets/icons/`: "1399" over an ESPP price line on the app blue,
+  with three points: lookback start (purple), purchase (green, below the line:
+  15% under the lower of the two prices) and sale (orange). Source `assets/icons/icon.svg`; run
   `node tools/make_icons.js` (Playwright) to render 192, 512, maskable 512,
   apple-touch 180 and favicon 32.
 - iOS meta tags.

@@ -4,10 +4,10 @@
  * Run: node tools/make_icons.js   (needs Playwright with Chromium)
  *
  * - icon-192 / icon-512: rounded square, as drawn.
- * - icon-maskable-512: full-bleed square, drawing shrunk to 90% so it stays inside the circular safe zone
+ * - icon-maskable-512: full-bleed square, drawing shrunk to 84% so it stays inside the circular safe zone
  *   (Android crops it to a circle or squircle).
  * - apple-touch-icon (180): full-bleed square (iOS rounds the corners itself).
- * - favicon-32: rounded square without the faint grid lines.
+ * - favicon-32: rounded square, as drawn.
  */
 const fs = require('fs');
 const path = require('path');
@@ -19,9 +19,9 @@ const SRC = fs.readFileSync(path.join(DIR, 'icon.svg'), 'utf8');
 const variants = {
   'icon-192.png': { size: 192, svg: SRC },
   'icon-512.png': { size: 512, svg: SRC },
-  'icon-maskable-512.png': { size: 512, svg: SRC.replace('rx="112"', 'rx="0"').replace('<g class="art">', '<g class="art" transform="translate(25.6 25.6) scale(.9)">') },
+  'icon-maskable-512.png': { size: 512, svg: SRC.replace('rx="112"', 'rx="0"').replace('<g class="art">', '<g class="art" transform="translate(40.96 40.96) scale(.84)">') },
   'apple-touch-icon.png': { size: 180, svg: SRC.replace('rx="112"', 'rx="0"') },
-  'favicon-32.png': { size: 32, svg: SRC.replace(/<g class="grid"[\s\S]*?<\/g>/, '') },
+  'favicon-32.png': { size: 32, svg: SRC },
 };
 
 (async () => {
