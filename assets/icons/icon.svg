@@ -6,7 +6,6 @@
   <g class="art">
     <text x="256" y="172" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="132" fill="#fff" letter-spacing="4">1399</text>
     <g transform="translate(51.2 113.2) scale(.8)">
-      <path d="M100 310 H236 V334" fill="none" stroke="#fff" stroke-width="8" stroke-dasharray="4 14" stroke-linecap="round" opacity=".7"/>
       <path d="M100 310 L170 284 L236 250 L300 282 L404 160" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M344 160 H404 V220" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
       <circle cx="100" cy="310" r="22" fill="#9b6cf0" stroke="#fff" stroke-width="8"/>
