@@ -301,8 +301,10 @@ Decided with the user before building.
 
 ### Home-screen app (icon only, by choice; no service worker, no offline)
 - `manifest.webmanifest` (RTL, he).
-- Icons in `assets/icons/`, generated with PIL: 192, 512, maskable 512,
-  apple-touch 180, favicon 32.
+- Icons in `assets/icons/`: a rising stock line from a green purchase point to
+  an orange sale point, on the app blue. Source `assets/icons/icon.svg`; run
+  `node tools/make_icons.js` (Playwright) to render 192, 512, maskable 512,
+  apple-touch 180 and favicon 32.
 - iOS meta tags.
 - An "התקנה כאפליקציה" button appears in the footer only when the browser
   fires `beforeinstallprompt`.
